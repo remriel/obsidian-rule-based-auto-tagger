@@ -19,11 +19,11 @@ Build and publish only the Day 1 Rule-Based Auto-Tagger Obsidian plugin. The pri
 
 - npm install, npm run build, and npm test all succeeded on 2026-11-23. The build generated main.js with esbuild and npm reported no vulnerabilities.
 - The smoke suite uses mocked Obsidian APIs; actual behavior in Obsidian desktop or mobile has not been verified.
-- gh auth status identifies remriel. https://github.com/remriel/obsidian-rule-based-auto-tagger was created and verified PRIVATE; initial synchronization is in progress.
+- gh auth status identifies remriel. https://github.com/remriel/obsidian-rule-based-auto-tagger was created and verified PRIVATE. Its initial main commit 9060f4a was pushed and the remote tree verified.
 - Before the user clarified the separate-repository requirement, https://github.com/remriel/obsidian-daily-plugins was created. It is PRIVATE and empty; no code was pushed there. It has been left untouched rather than deleted.
 - Miyo listed Avernus, Remy, Codex, and an empty sessions folder; an unscoped task-specific search covered available indexed folders. Avernus was read at G:\Other computers\My Laptop\Drive\Avernus. C:\Drive\Avernus remains unavailable.
 - The original sandbox could not start Node, npm, git, or gh and returned 0xC0000142. The resumed environment runs those tools successfully. VERIFICATION.md preserves an independent, time-stamped verification from between sessions; its earlier GitHub auth status is historical.
-- A session archive is to be written under the designated Avernus vault before the response.
+- The user-visible conversation was saved and read-back verified in the designated Avernus Codex Session Archive for thread 01a209be-53e0-72e2-9c97-3b31a64175c5; refresh it with the final reply before finishing.
 
 ## Limitations and important context
 
@@ -35,4 +35,4 @@ Build and publish only the Day 1 Rule-Based Auto-Tagger Obsidian plugin. The pri
 
 ## RESUME HERE
 
-Complete and verify the initial push to the private per-plugin repository. Refresh these notes to show the verified commit and keep the remote synchronized. Archive the visible conversation in Avernus. A future user-authorized community listing needs a public release repository, matching version tag and release assets, and submission; first run the plugin in a disposable real Obsidian vault.
+The plugin is published to the private per-plugin repository. For future work, verify remote state first. A future user-authorized community listing needs a public release repository, matching version tag and release assets, and submission; first run the plugin in a disposable real Obsidian vault.
