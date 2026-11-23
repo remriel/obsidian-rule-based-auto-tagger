@@ -60,3 +60,12 @@
 ## RESUME HERE
 
 Review the local diff and release workflow, update package-lock.json to 1.0.1 if needed, and run git diff --check. Then commit and push main, push tag 1.0.1, monitor the tag-triggered Actions workflow, and verify that the published main.js/styles.css match the tag build and pass GitHub attestation verification. Check the automatic review scan. Finally update this worklog, docs/PROGRESS.md, WISDOM.md, the Avernus project pointer/session log, and the per-thread archive, and verify those writes.
+## 2026-11-23 review follow-up
+
+Owner: primary agent. The 1.0.1 review flagged modern settings refresh calls, callback return types, a duplicated heading, deprecated internal calls, and two TypeScript lint issues. The previous 1.0.1 release is published.
+
+Keep the 1.5.0 floor and both settings renderers. In main.ts, saveRuleList handles rejected saves and guards the modern settings refresh with requireApiVersion('1.13.0'). The legacy lifecycle method delegates to a private renderer. The CommonJS export retains its existing shape with a typed module declaration.
+
+## RESUME HERE
+
+The follow-up changes passed targeted ESLint, typecheck, build, smoke tests, and diff checks. Native settings interaction and the hosted review remain unverified. If preparing a release, use a new version and numeric tag so the existing attestation workflow builds and publishes it.

@@ -11,3 +11,9 @@ An individual private repository is a good source home but is not by itself a pu
 ## 3. What assumption did you make that, if wrong, would change your answer the most? What would you do differently?
 
 I assumed MIT licensing is appropriate because the user's other Obsidian plugin repositories use MIT. If a different license is desired, I would replace the license before any public release.
+
+## 2026-11-23 review follow-up
+
+1. Least confident: native settings add, remove, and reorder behavior. I would exercise those actions on both Obsidian 1.5 and 1.13+ and reopen the tab to confirm persistence.
+2. Biggest gap: the published plugin still points at 1.0.1. I would verify the hosted review against a fresh attested release when publishing.
+3. Key assumption: the 1.5.0 support floor still matters. If that changes, I would remove the legacy renderer and set the floor to 1.13.0.

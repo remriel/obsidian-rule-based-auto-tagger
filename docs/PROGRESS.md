@@ -44,3 +44,18 @@ No local implementation blocker. Release publication and scan verification are p
 3. Push tag 1.0.1 to trigger the release workflow.
 4. Monitor Actions, verify the new release assets and their attestations, and check the automatic review result.
 5. Update project notes, WISDOM.md, Avernus project memory/session log, and the current thread archive; verify all writes.
+## 2026-11-23 review follow-up
+
+Objective: Resolve the reported 1.0.1 findings and synchronize the source fixes to GitHub.
+
+Progress: 100% for verified source changes. A new release and hosted review are separate pending milestones.
+
+- [x] Fix all reported lines while retaining the 1.5.0 support floor.
+- [x] Typecheck, build, run smoke tests, and run the six relevant ESLint rules.
+- [x] Check the diff and rebuild the tracked bundle.
+
+Next release steps, when requested:
+
+1. Verify settings changes in native Obsidian on both settings API generations.
+2. Bump the version and push a new numeric tag.
+3. Check the release workflow, artifact attestations, and hosted Obsidian review.

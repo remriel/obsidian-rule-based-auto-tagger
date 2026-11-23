@@ -309,40 +309,47 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
             }
           ]
         })),
-        onDelete: async (index) => {
+        onDelete: (index) => {
           this.plugin.settings.rules.splice(index, 1);
-          await this.plugin.saveSettings();
-          this.update();
+          this.saveRuleList();
         },
-        onReorder: async (oldIndex, newIndex) => {
+        onReorder: (oldIndex, newIndex) => {
           if (oldIndex === newIndex) return;
           const moved = this.plugin.settings.rules.splice(oldIndex, 1)[0];
           if (!moved) return;
           this.plugin.settings.rules.splice(newIndex, 0, moved);
-          await this.plugin.saveSettings();
-          this.update();
+          this.saveRuleList();
         },
         addItem: {
           name: "Add rule",
-          action: async () => {
+          action: () => {
             this.plugin.settings.rules.push({
               pattern: "",
               mode: "keyword",
               ignoreCase: true,
               tags: ""
             });
-            await this.plugin.saveSettings();
-            this.update();
+            this.saveRuleList();
           }
         }
       }
     ];
   }
+  saveRuleList() {
+    this.plugin.saveSettings().then(() => {
+      if ((0, import_obsidian.requireApiVersion)("1.13.0")) this.update();
+    }).catch((error) => {
+      new import_obsidian.Notice("Could not save rules: " + errorMessage(error));
+      console.error(error);
+    });
+  }
   // Older supported Obsidian versions use the legacy renderer below.
   display() {
+    this.renderLegacySettings();
+  }
+  renderLegacySettings() {
     const container = this.containerEl;
     container.empty();
-    new import_obsidian.Setting(container).setName("Rule-Based Auto-Tagger").setHeading();
     container.createEl("p", {
       text: "Rules scan note bodies. Keywords match whole words or phrases. Regex patterns use JavaScript syntax without slash delimiters."
     });
@@ -354,7 +361,7 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
       new import_obsidian.Setting(row).setName("Rule " + (index + 1)).addButton((button) => button.setButtonText("Remove").onClick(async () => {
         this.plugin.settings.rules.splice(index, 1);
         await this.plugin.saveSettings();
-        this.display();
+        this.renderLegacySettings();
       }));
       new import_obsidian.Setting(row).setName("Pattern").addText((text) => text.setPlaceholder("machine learning").setValue(rule.pattern).onChange(async (value) => {
         rule.pattern = value;
@@ -378,7 +385,7 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(container).addButton((button) => button.setButtonText("Add rule").onClick(async () => {
       this.plugin.settings.rules.push({ pattern: "", mode: "keyword", ignoreCase: true, tags: "" });
       await this.plugin.saveSettings();
-      this.display();
+      this.renderLegacySettings();
     }));
   }
 };

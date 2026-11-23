@@ -6,6 +6,7 @@ import {
   Setting,
   getAllTags,
   parseYaml,
+  requireApiVersion,
 } from 'obsidian';
 import type {
   App,
@@ -13,6 +14,8 @@ import type {
   SettingDefinitionItem,
   TFile,
 } from 'obsidian';
+
+declare const module: { exports: unknown };
 
 type TagRule = { pattern: string; mode: 'keyword' | 'regex'; ignoreCase: boolean; tags: string };
 type PluginSettings = { rules: TagRule[] };
@@ -140,7 +143,7 @@ function readTagField(value: unknown): string[] {
   if (value === undefined || value === null || value === '') return [];
   if (typeof value === 'string') return value.split(/[,\s]+/).filter(Boolean);
   if (Array.isArray(value) && value.every((entry: unknown) => typeof entry === 'string')) {
-    return value.slice() as string[];
+    return value.slice();
   }
   throw new Error('The frontmatter tags property must be text or a list of text');
 }
@@ -403,41 +406,50 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
             },
           ],
         })),
-        onDelete: async (index) => {
+        onDelete: (index) => {
           this.plugin.settings.rules.splice(index, 1);
-          await this.plugin.saveSettings();
-          this.update();
+          this.saveRuleList();
         },
-        onReorder: async (oldIndex, newIndex) => {
+        onReorder: (oldIndex, newIndex) => {
           if (oldIndex === newIndex) return;
           const moved = this.plugin.settings.rules.splice(oldIndex, 1)[0];
           if (!moved) return;
           this.plugin.settings.rules.splice(newIndex, 0, moved);
-          await this.plugin.saveSettings();
-          this.update();
+          this.saveRuleList();
         },
         addItem: {
           name: 'Add rule',
-          action: async () => {
+          action: () => {
             this.plugin.settings.rules.push({
               pattern: '',
               mode: 'keyword',
               ignoreCase: true,
               tags: '',
             });
-            await this.plugin.saveSettings();
-            this.update();
+            this.saveRuleList();
           },
         },
       },
     ];
   }
 
+  private saveRuleList(): void {
+    this.plugin.saveSettings().then(() => {
+      if (requireApiVersion('1.13.0')) this.update();
+    }).catch((error: unknown) => {
+      new Notice('Could not save rules: ' + errorMessage(error));
+      console.error(error);
+    });
+  }
+
   // Older supported Obsidian versions use the legacy renderer below.
   display(): void {
+    this.renderLegacySettings();
+  }
+
+  private renderLegacySettings(): void {
     const container = this.containerEl;
     container.empty();
-    new Setting(container).setName('Rule-Based Auto-Tagger').setHeading();
     container.createEl('p', {
       text: 'Rules scan note bodies. Keywords match whole words or phrases. Regex patterns use JavaScript syntax without slash delimiters.',
     });
@@ -452,7 +464,7 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
         .addButton((button) => button.setButtonText('Remove').onClick(async () => {
           this.plugin.settings.rules.splice(index, 1);
           await this.plugin.saveSettings();
-          this.display();
+          this.renderLegacySettings();
         }));
       new Setting(row).setName('Pattern')
         .addText((text) => text.setPlaceholder('machine learning').setValue(rule.pattern)
@@ -479,7 +491,7 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
     new Setting(container).addButton((button) => button.setButtonText('Add rule').onClick(async () => {
       this.plugin.settings.rules.push({ pattern: '', mode: 'keyword', ignoreCase: true, tags: '' });
       await this.plugin.saveSettings();
-      this.display();
+      this.renderLegacySettings();
     }));
   }
 }
