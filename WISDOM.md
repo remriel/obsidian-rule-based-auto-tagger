@@ -1,0 +1,13 @@
+# Wisdom
+
+## 1. What are you least confident about right now? What would you do differently?
+
+I am least confident about behavior in a real Obsidian vault because the passing smoke tests mock the Obsidian API. I would exercise settings, tag placement, cancellation, and batch application against a disposable vault before relying on the plugin.
+
+## 2. What is the biggest thing I am missing about the situation right now? What do I not realize? What would you do differently?
+
+An individual private repository is a good source home but is not by itself a public Obsidian community listing. A future listing needs a public release repository, release assets, and an authorized submission. I would keep this repository private now and handle publication separately when requested.
+
+## 3. What assumption did you make that, if wrong, would change your answer the most? What would you do differently?
+
+I assumed MIT licensing is appropriate because the user's other Obsidian plugin repositories use MIT. If a different license is desired, I would replace the license before any public release.

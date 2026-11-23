@@ -1,0 +1,9 @@
+{
+  "id": "rule-based-auto-tagger",
+  "name": "Rule-Based Auto-Tagger",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "Apply local keyword and regex tag rules to notes, with batch previews and keyword suggestions.",
+  "author": "remriel",
+  "isDesktopOnly": false
+}
