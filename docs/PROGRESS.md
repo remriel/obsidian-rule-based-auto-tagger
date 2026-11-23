@@ -1,40 +1,32 @@
 # Progress — Rule-Based Auto-Tagger 1.0.2
 
-**Objective:** Publish a 1.0.2 GitHub release containing the current settings fixes, with attested release assets.
+**Objective:** Publish a new patch release with the settings fixes and verify GitHub assets and provenance.
 
-**Progress:** 45% — the fixes are already committed and locally verified; version metadata is being updated. Tagging, publication, and remote asset verification remain.
+**Progress:** 100% — 1.0.2 is published and verified.
 
 ## Checklist
 
-- [x] Search all available Miyo folders and read relevant Avernus context.
-- [x] Confirm the working tree was clean and `main` matched `origin/main` at the fixes commit.
-- [x] Confirm 1.0.1 is the latest published release and the tag-triggered workflow is enabled.
-- [x] Reconcile current settings fixes from commit `29f2715`; previous project checks report smoke, typecheck, build, lint, and diff checks passing.
-- [ ] Align package, lockfile, manifest, and versions metadata at 1.0.2.
-- [ ] Review release diff and `git diff --check`.
-- [ ] Commit and push the release metadata to `main`.
-- [ ] Push tag 1.0.2 and wait for Actions.
-- [ ] Verify release assets, SHA-256 digests, and GitHub attestations.
-- [ ] Update final project notes, Avernus handoff/session log, and thread archive.
+- [x] Search every available Miyo folder and read the relevant Avernus context.
+- [x] Confirm the existing settings fixes on `main` and review the release process.
+- [x] Align `package.json`, `package-lock.json`, `manifest.json`, and `versions.json` at 1.0.2.
+- [x] Run metadata validation and `git diff --check`.
+- [x] Commit and push release metadata to `main`.
+- [x] Push tag 1.0.2 and complete the release workflow.
+- [x] Download all three assets and match their SHA-256 values to GitHub metadata.
+- [x] Verify `main.js` and `styles.css` GitHub artifact attestations for tag 1.0.2.
+- [x] Update project notes, Avernus handoff/session log, and the thread archive.
 
-## Current implementation
+## Implementation and verification
 
-The source fixes are already in `main` at `29f2715decb839068ab02197ef07614ae9fce6f1`. Version 1.0.2 is the next patch release after published 1.0.1. The release workflow performs typecheck/build/version checks, creates attestations, and publishes `main.js`, `manifest.json`, and `styles.css`.
+The source settings fixes are in commit `29f2715`; release tag 1.0.2 points to `42d3359`. GitHub Actions run [45263574433](https://github.com/remriel/obsidian-rule-based-auto-tagger/actions/runs/45263574433) passed install, typecheck, build, version checks, attestations, and publication. All three downloaded asset hashes match the release metadata. Attestation provenance names tag 1.0.2 and commit `42d3359`.
 
-## Verification and limits
+Prior local checks on the source-fix commit report smoke tests, typecheck, build, targeted lint, and diff checks passing. Native Obsidian settings and the separate automatic review scan remain unverified. No personal vault changed.
 
-- Prior checks on `29f2715`: smoke tests, typecheck, build, targeted lint, and diff checks reported passing.
-- 1.0.1 GitHub release workflow: completed successfully.
-- 1.0.2 has not yet been tagged or published.
-- Native Obsidian UI and the separate automatic review scanner remain unverified.
+## Current blockers
 
-## Current blocker
+None for the requested release.
 
-None.
+## Ordered follow-up
 
-## Exact next steps
-
-1. Confirm metadata alignment and inspect the diff.
-2. Commit and push `main`.
-3. Push tag `1.0.2` to start the release workflow.
-4. Verify the release, assets, and attestations; update all handoff and archive files.
+1. Check the settings flows in native Obsidian on both supported settings API generations.
+2. Check the external automatic review scanner when it becomes accessible.
