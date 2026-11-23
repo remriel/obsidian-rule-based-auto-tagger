@@ -1,35 +1,46 @@
 # Progress
 
-**Objective:** Publish the Day 1 Rule-Based Auto-Tagger in its own private GitHub repository.
-**Progress:** 100 percent for the requested private repository publication. The source build, mocked smoke tests, private push, remote verification, and conversation archive are complete; native Obsidian testing remains a separate future check.
+**Objective:** Fix the 1.0.0 review findings and publish a 1.0.1 release with GitHub artifact attestations for main.js and styles.css so the release can be scanned again.
 
-- [x] Inspect project state, current source, available Miyo context, and GitHub authentication.
-- [x] Run npm install, npm run build, and npm test successfully.
-- [x] Create and verify the dedicated GitHub repository is private.
-- [x] Add an MIT license consistent with the user's other Obsidian plugins.
-- [x] Commit and push the plugin at the root of its dedicated repository.
-- [x] Verify the remote commit, repository privacy, and expected files.
-- [x] Archive the user-visible conversation in Avernus and verify the write.
+**Progress:** 70 percent toward a verified release. Local source changes, version metadata, release automation, strict typecheck, and build are ready. GitHub publication, attestation verification, scanner rescan, and memory/archive updates remain.
+
+## Checklist
+
+- [x] Read current project state, inspect clean Git status, and confirm live GitHub state.
+- [x] Confirm the remote repository is PUBLIC and the 1.0.0 assets are missing attestations.
+- [x] Replace require('obsidian') with typed imports and type the plugin paths flagged as unsafe.
+- [x] Replace the settings tab's direct HTML heading with Setting.setHeading().
+- [x] Add searchable declarative rule pages for Obsidian 1.13+ while preserving the legacy UI for 1.5+.
+- [x] Add strict TypeScript typechecking and 1.0.1 version metadata.
+- [x] Add a pinned GitHub Actions workflow that builds, attests main.js/styles.css, and publishes the release on a version tag.
+- [x] Run npm ci, npm run typecheck, and npm run build successfully.
+- [ ] Inspect final diff, validate workflow and metadata, and run git diff --check.
+- [ ] Commit and push the fixes to main.
+- [ ] Push tag 1.0.1 and wait for the release workflow.
+- [ ] Verify release asset digests and GitHub attestations, then inspect the automatic review scan.
+- [ ] Update this progress note, docs/PROJECT_STATE.md, WISDOM.md, and the Avernus memory pointer/session log.
+- [ ] Archive this thread's visible conversation in Avernus and verify the write.
 
 ## Current implementation state
 
-The plugin implements saved keyword and regex rules, starter rules, four commands, local suggestions, frontmatter tagging, duplicate checks, and confirmed batch previews. main.js is the successful esbuild output. The dedicated repository is https://github.com/remriel/obsidian-rule-based-auto-tagger and is private.
+main.ts now uses typed Obsidian imports, explicit domain types, safe narrowing for untyped API results, and unknown error handling. Its settings tab uses Setting.setHeading(); Obsidian 1.13+ gets declarative searchable rule pages, while older supported versions retain the imperative settings tab. Version files are being aligned to 1.0.1. The release workflow is configured to attest the exact release JavaScript and CSS assets before creating a GitHub release.
 
-A separate empty private repository, remriel/obsidian-daily-plugins, was created before the user clarified that each plugin must have its own repository. No code was pushed to it.
+## Verification performed
 
-## Tests and verification
+- npm ci: passed; 0 vulnerabilities reported.
+- npm run typecheck: passed.
+- npm run build: passed; generated main.js at 20.7 kB.
+- npm test: not run during this task.
+- No GitHub commit, tag, release, scanner rescan, or attestation verification has occurred yet.
 
-- npm install: exit 0; audited 17 packages with no vulnerabilities. npm noted that the esbuild postinstall script was not covered by allowScripts.
-- npm run build: exit 0; esbuild wrote main.js.
-- npm test: exit 0; smoke checks passed using mocked Obsidian APIs.
-- gh repository metadata: the dedicated repository is PRIVATE, and remote main matched initial commit 9060f4a with all expected root files.
-- Native Obsidian desktop and mobile integration has not been tested.
+## Current blockers
 
-## Blockers and remaining limitations
-
-No current build or authentication blocker. A future community listing requires a public release repository and an authorized submission; this run remains private and did not submit the plugin.
+No local implementation blocker. Release publication and scan verification are pending the final diff review and GitHub push. Miyo CLI is unavailable; local Avernus and Remy searches are being used instead.
 
 ## Exact ordered next steps
 
-1. When requested later, test the plugin in a disposable Obsidian vault.
-2. For a future community listing, prepare a public release repository and an authorized submission.
+1. Inspect package-lock.json, versions.json, workflow YAML, and source diff; run git diff --check.
+2. Commit the completed changes and push main.
+3. Push tag 1.0.1 to trigger the release workflow.
+4. Monitor Actions, verify the new release assets and their attestations, and check the automatic review result.
+5. Update project notes, WISDOM.md, Avernus project memory/session log, and the current thread archive; verify all writes.

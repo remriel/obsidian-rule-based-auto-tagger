@@ -1,17 +1,29 @@
-const {
-  Plugin,
-  PluginSettingTab,
+import {
   Modal,
   Notice,
+  Plugin,
+  PluginSettingTab,
   Setting,
   getAllTags,
   parseYaml,
-} = require('obsidian');
+} from 'obsidian';
+import type {
+  App,
+  CachedMetadata,
+  SettingDefinitionItem,
+  TFile,
+} from 'obsidian';
 
 type TagRule = { pattern: string; mode: 'keyword' | 'regex'; ignoreCase: boolean; tags: string };
 type PluginSettings = { rules: TagRule[] };
+type CompiledRule = { regex: RegExp; tags: string[] };
+type RuleCompilation = { compiled: CompiledRule[]; errors: string[] };
+type FrontmatterParts = { yaml: string | null; body: string };
+type PreviewChange = { file: TFile; tags: string[] };
+type TagSuggestion = { tag: string; count: number };
+type RuleSettingProperty = keyof TagRule;
 
-const STARTER_RULES = [
+const STARTER_RULES: TagRule[] = [
   { pattern: 'machine learning', mode: 'keyword', ignoreCase: true, tags: 'ai, ml' },
   { pattern: 'artificial intelligence', mode: 'keyword', ignoreCase: true, tags: 'ai' },
   { pattern: 'ai', mode: 'keyword', ignoreCase: true, tags: 'ai' },
@@ -30,18 +42,47 @@ const STOP_WORDS = new Set((
   'when where which while who whom why will with would you your yours yourself yourselves'
 ).split(' '));
 
-function cleanTag(value) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeRule(value: unknown): TagRule | null {
+  if (!isRecord(value)) return null;
+  return {
+    pattern: typeof value.pattern === 'string' ? value.pattern : '',
+    mode: value.mode === 'regex' ? 'regex' : 'keyword',
+    ignoreCase: value.ignoreCase !== false,
+    tags: typeof value.tags === 'string' ? value.tags : '',
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getRuleSetting(
+  settings: PluginSettings,
+  key: string,
+): { rule: TagRule; property: RuleSettingProperty } | null {
+  const match = /^rules\.(\d+)\.(pattern|mode|ignoreCase|tags)$/.exec(key);
+  if (!match) return null;
+  const rule = settings.rules[Number(match[1])];
+  if (!rule) return null;
+  return { rule, property: match[2] as RuleSettingProperty };
+}
+
+function cleanTag(value: string): string {
   return String(value).trim().replace(/^#+/, '');
 }
 
-function tagKey(value) {
+function tagKey(value: string): string {
   return cleanTag(value).toLowerCase();
 }
 
-function parseTagInput(value) {
-  const tags = [];
-  const invalid = [];
-  const seen = new Set();
+function parseTagInput(value: string): { tags: string[]; invalid: string[] } {
+  const tags: string[] = [];
+  const invalid: string[] = [];
+  const seen = new Set<string>();
   for (const part of String(value || '').split(/[,\s]+/).filter(Boolean)) {
     const tag = cleanTag(part);
     if (!VALID_TAG.test(tag)) {
@@ -54,16 +95,16 @@ function parseTagInput(value) {
   return { tags, invalid };
 }
 
-function escapeRegex(value) {
+function escapeRegex(value: string): string {
   const special = '\\^$.*+?()[]{}|/';
   return Array.from(value, (character) =>
     special.includes(character) ? '\\' + character : character
   ).join('');
 }
 
-function compileRules(rules) {
-  const compiled = [];
-  const errors = [];
+function compileRules(rules: TagRule[]): RuleCompilation {
+  const compiled: CompiledRule[] = [];
+  const errors: string[] = [];
   for (const [index, rule] of rules.entries()) {
     const pattern = String(rule.pattern || '').trim();
     const parsed = parseTagInput(rule.tags);
@@ -78,14 +119,14 @@ function compileRules(rules) {
         : '(^|[^\\p{L}\\p{N}_])' + escapeRegex(pattern) + '(?=$|[^\\p{L}\\p{N}_])';
       const regex = new RegExp(source, rule.ignoreCase ? 'iu' : 'u');
       compiled.push({ regex, tags: parsed.tags });
-    } catch (error) {
+    } catch {
       errors.push('Rule ' + (index + 1) + ' has an invalid regular expression.');
     }
   }
   return { compiled, errors };
 }
 
-function splitFrontmatter(content) {
+function splitFrontmatter(content: string): FrontmatterParts {
   const opening = /^\uFEFF?---[ \t]*(?:\r?\n|$)/.test(content);
   const found = /^\uFEFF?---[ \t]*\r?\n([\s\S]*?)^---[ \t]*(?:\r?\n|$)/m.exec(content);
   const match = found && found.index === 0 ? found : null;
@@ -95,30 +136,31 @@ function splitFrontmatter(content) {
     : { yaml: null, body: content };
 }
 
-function readTagField(value) {
+function readTagField(value: unknown): string[] {
   if (value === undefined || value === null || value === '') return [];
   if (typeof value === 'string') return value.split(/[,\s]+/).filter(Boolean);
-  if (Array.isArray(value) && value.every((entry) => typeof entry === 'string')) {
-    return value.slice();
+  if (Array.isArray(value) && value.every((entry: unknown) => typeof entry === 'string')) {
+    return value.slice() as string[];
   }
   throw new Error('The frontmatter tags property must be text or a list of text');
 }
 
-function collectExistingTags(content, cache) {
-  const existing = new Set();
+function collectExistingTags(content: string, cache: CachedMetadata | null): Set<string> {
+  const existing = new Set<string>();
   const parts = splitFrontmatter(content);
   if (parts.yaml !== null) {
-    const frontmatter = parseYaml(parts.yaml);
+    const frontmatter: unknown = parseYaml(parts.yaml);
     if (frontmatter !== null && frontmatter !== undefined &&
-        (typeof frontmatter !== 'object' || Array.isArray(frontmatter))) {
+        !isRecord(frontmatter)) {
       throw new Error('Frontmatter must be a YAML mapping');
     }
-    for (const tag of readTagField(frontmatter && frontmatter.tags)) {
+    const values = isRecord(frontmatter) ? frontmatter.tags : undefined;
+    for (const tag of readTagField(values)) {
       existing.add(tagKey(tag));
     }
   }
   const inline = /(?:^|[^\p{L}\p{N}_/#])#([\p{L}\p{N}_-]+(?:\/[\p{L}\p{N}_-]+)*)/gu;
-  let match;
+  let match: RegExpExecArray | null;
   while ((match = inline.exec(parts.body)) !== null) existing.add(tagKey(match[1]));
   if (cache) {
     for (const tag of getAllTags(cache) || []) existing.add(tagKey(tag));
@@ -126,10 +168,10 @@ function collectExistingTags(content, cache) {
   return existing;
 }
 
-function matchRules(content, compiled) {
+function matchRules(content: string, compiled: CompiledRule[]): string[] {
   const body = splitFrontmatter(content).body;
   const matched = [];
-  const seen = new Set();
+  const seen = new Set<string>();
   for (const rule of compiled) {
     if (!rule.regex.test(body)) continue;
     for (const tag of rule.tags) {
@@ -143,18 +185,22 @@ function matchRules(content, compiled) {
   return matched;
 }
 
-function proposedTags(content, cache, compiled) {
+function proposedTags(content: string, cache: CachedMetadata | null, compiled: CompiledRule[]): string[] {
   const existing = collectExistingTags(content, cache);
   return matchRules(content, compiled).filter((tag) => !existing.has(tagKey(tag)));
 }
 
-function suggestKeywords(content, cache, limit = 10) {
+function suggestKeywords(
+  content: string,
+  cache: CachedMetadata | null,
+  limit = 10,
+): TagSuggestion[] {
   const existing = collectExistingTags(content, cache);
   const fences = String.fromCharCode(96).repeat(3);
   const body = splitFrontmatter(content).body
     .replace(new RegExp(fences + '[\\s\\S]*?' + fences, 'g'), ' ')
     .replace(/(?:^|[^\p{L}\p{N}_/#])#[\p{L}\p{N}_/-]+/gu, ' ');
-  const counts = new Map();
+  const counts = new Map<string, number>();
   const words = body.match(/[\p{L}\p{N}_-]+/gu) || [];
   for (const raw of words) {
     const word = raw.toLowerCase();
@@ -167,13 +213,19 @@ function suggestKeywords(content, cache, limit = 10) {
 }
 
 class BatchPreviewModal extends Modal {
-  plugin: RuleBasedAutoTagger; // @type-only
-  changes: any[]; // @type-only
-  compiled: any[]; // @type-only
-  label: string; // @type-only
-  skipped: string[]; // @type-only
+  plugin: RuleBasedAutoTagger;
+  changes: PreviewChange[];
+  compiled: CompiledRule[];
+  label: string;
+  skipped: string[];
 
-  constructor(plugin, changes, compiled, label, skipped) {
+  constructor(
+    plugin: RuleBasedAutoTagger,
+    changes: PreviewChange[],
+    compiled: CompiledRule[],
+    label: string,
+    skipped: string[],
+  ) {
     super(plugin.app);
     this.plugin = plugin;
     this.changes = changes;
@@ -182,7 +234,7 @@ class BatchPreviewModal extends Modal {
     this.skipped = skipped;
   }
 
-  onOpen() {
+  onOpen(): void {
     const content = this.contentEl;
     content.empty();
     content.addClass('auto-tagger-preview');
@@ -210,18 +262,18 @@ class BatchPreviewModal extends Modal {
     });
   }
 
-  onClose() {
+  onClose(): void {
     this.contentEl.empty();
   }
 }
 
 class SuggestionModal extends Modal {
-  plugin: RuleBasedAutoTagger; // @type-only
-  file: any; // @type-only
-  suggestions: any[]; // @type-only
+  plugin: RuleBasedAutoTagger;
+  file: TFile;
+  suggestions: TagSuggestion[];
   selected: Set<string>; // @type-only
 
-  constructor(plugin, file, suggestions) {
+  constructor(plugin: RuleBasedAutoTagger, file: TFile, suggestions: TagSuggestion[]) {
     super(plugin.app);
     this.plugin = plugin;
     this.file = file;
@@ -229,7 +281,7 @@ class SuggestionModal extends Modal {
     this.selected = new Set(suggestions.map((item) => item.tag));
   }
 
-  onOpen() {
+  onOpen(): void {
     const content = this.contentEl;
     content.empty();
     content.createEl('h2', { text: 'Suggested tags' });
@@ -253,23 +305,139 @@ class SuggestionModal extends Modal {
       });
   }
 
-  onClose() {
+  onClose(): void {
     this.contentEl.empty();
   }
 }
 
 class AutoTaggerSettingsTab extends PluginSettingTab {
-  plugin: RuleBasedAutoTagger; // @type-only
+  plugin: RuleBasedAutoTagger;
 
-  constructor(app, plugin) {
+  constructor(app: App, plugin: RuleBasedAutoTagger) {
     super(app, plugin);
     this.plugin = plugin;
   }
 
-  display() {
+  getControlValue(key: string): unknown {
+    const setting = getRuleSetting(this.plugin.settings, key);
+    if (!setting) return undefined;
+    return setting.rule[setting.property];
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    const setting = getRuleSetting(this.plugin.settings, key);
+    if (!setting) return;
+    switch (setting.property) {
+      case 'pattern':
+      case 'tags':
+        if (typeof value !== 'string') return;
+        setting.rule[setting.property] = value;
+        break;
+      case 'mode':
+        if (value !== 'keyword' && value !== 'regex') return;
+        setting.rule.mode = value;
+        break;
+      case 'ignoreCase':
+        if (typeof value !== 'boolean') return;
+        setting.rule.ignoreCase = value;
+        break;
+    }
+    await this.plugin.saveSettings();
+  }
+
+  // Obsidian 1.13+ uses these definitions for rendering and global settings search.
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    const rules = this.plugin.settings.rules;
+    return [
+      {
+        name: 'Rule behavior',
+        desc: 'Rules scan note bodies. Keywords match whole words or phrases. Regular expressions use JavaScript syntax without slash delimiters.',
+      },
+      {
+        type: 'list',
+        heading: 'Rules',
+        emptyState: 'No rules yet. Add a rule to get started.',
+        items: rules.map((rule, index) => ({
+          type: 'page' as const,
+          name: 'Rule ' + (index + 1),
+          desc: rule.pattern
+            ? 'Pattern: ' + rule.pattern + '; tags: ' + rule.tags
+            : 'Set the pattern and tags for this rule.',
+          aliases: [rule.pattern, ...parseTagInput(rule.tags).tags],
+          items: [
+            {
+              name: 'Pattern',
+              control: {
+                type: 'text',
+                key: 'rules.' + index + '.pattern',
+                placeholder: 'machine learning',
+              },
+            },
+            {
+              name: 'Match type',
+              control: {
+                type: 'dropdown',
+                key: 'rules.' + index + '.mode',
+                defaultValue: 'keyword',
+                options: {
+                  keyword: 'Keyword or phrase',
+                  regex: 'Regular expression',
+                },
+              },
+            },
+            {
+              name: 'Case-insensitive',
+              control: {
+                type: 'toggle',
+                key: 'rules.' + index + '.ignoreCase',
+                defaultValue: true,
+              },
+            },
+            {
+              name: 'Tags',
+              control: {
+                type: 'text',
+                key: 'rules.' + index + '.tags',
+                placeholder: 'ai, ml',
+              },
+            },
+          ],
+        })),
+        onDelete: async (index) => {
+          this.plugin.settings.rules.splice(index, 1);
+          await this.plugin.saveSettings();
+          this.update();
+        },
+        onReorder: async (oldIndex, newIndex) => {
+          if (oldIndex === newIndex) return;
+          const moved = this.plugin.settings.rules.splice(oldIndex, 1)[0];
+          if (!moved) return;
+          this.plugin.settings.rules.splice(newIndex, 0, moved);
+          await this.plugin.saveSettings();
+          this.update();
+        },
+        addItem: {
+          name: 'Add rule',
+          action: async () => {
+            this.plugin.settings.rules.push({
+              pattern: '',
+              mode: 'keyword',
+              ignoreCase: true,
+              tags: '',
+            });
+            await this.plugin.saveSettings();
+            this.update();
+          },
+        },
+      },
+    ];
+  }
+
+  // Older supported Obsidian versions use the legacy renderer below.
+  display(): void {
     const container = this.containerEl;
     container.empty();
-    container.createEl('h2', { text: 'Rule-Based Auto-Tagger' });
+    new Setting(container).setName('Rule-Based Auto-Tagger').setHeading();
     container.createEl('p', {
       text: 'Rules scan note bodies. Keywords match whole words or phrases. Regex patterns use JavaScript syntax without slash delimiters.',
     });
@@ -294,7 +462,12 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
           .addOption('keyword', 'Keyword or phrase')
           .addOption('regex', 'Regular expression')
           .setValue(rule.mode)
-          .onChange(async (value) => { rule.mode = value; await this.plugin.saveSettings(); }));
+          .onChange(async (value) => {
+            if (value === 'keyword' || value === 'regex') {
+              rule.mode = value;
+              await this.plugin.saveSettings();
+            }
+          }));
       new Setting(row).setName('Case-insensitive')
         .addToggle((toggle) => toggle.setValue(rule.ignoreCase)
           .onChange(async (value) => { rule.ignoreCase = value; await this.plugin.saveSettings(); }));
@@ -312,26 +485,26 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
 }
 
 class RuleBasedAutoTagger extends Plugin {
-  settings: PluginSettings; // @type-only
-  saveQueue = Promise.resolve();
+  settings!: PluginSettings;
+  saveQueue: Promise<void> = Promise.resolve();
 
-  async onload() {
-    const stored = await this.loadData();
-    const source = stored && Array.isArray(stored.rules) ? stored.rules : STARTER_RULES;
+  async onload(): Promise<void> {
+    const stored: unknown = await this.loadData();
+    const rawRules: unknown[] | null = isRecord(stored) && Array.isArray(stored.rules)
+      ? stored.rules as unknown[]
+      : null;
+    const source = rawRules
+      ? rawRules.map(normalizeRule).filter((rule): rule is TagRule => rule !== null)
+      : STARTER_RULES;
     this.settings = {
-      rules: source.filter((rule) => rule && typeof rule === 'object').map((rule) => ({
-        pattern: typeof rule.pattern === 'string' ? rule.pattern : '',
-        mode: rule.mode === 'regex' ? 'regex' : 'keyword',
-        ignoreCase: rule.ignoreCase !== false,
-        tags: typeof rule.tags === 'string' ? rule.tags : '',
-      })),
+      rules: source,
     };
-    if (!stored || !Array.isArray(stored.rules)) await this.saveSettings();
+    if (!rawRules || source.length !== rawRules.length) await this.saveSettings();
     this.addSettingTab(new AutoTaggerSettingsTab(this.app, this));
     this.addCommand({
       id: 'tag-current-note',
       name: 'Tag current note',
-      checkCallback: (checking) => {
+      checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
         if (!file) return false;
         if (!checking) void this.tagCurrent(file);
@@ -346,7 +519,7 @@ class RuleBasedAutoTagger extends Plugin {
     this.addCommand({
       id: 'tag-current-folder',
       name: 'Tag current folder',
-      checkCallback: (checking) => {
+      checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
         if (!file || !file.parent) return false;
         if (!checking) {
@@ -361,7 +534,7 @@ class RuleBasedAutoTagger extends Plugin {
     this.addCommand({
       id: 'suggest-tags-current-note',
       name: 'Suggest tags for current note',
-      checkCallback: (checking) => {
+      checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
         if (!file) return false;
         if (!checking) void this.suggestCurrent(file);
@@ -370,13 +543,15 @@ class RuleBasedAutoTagger extends Plugin {
     });
   }
 
-  async saveSettings() {
-    const snapshot = JSON.parse(JSON.stringify(this.settings));
+  async saveSettings(): Promise<void> {
+    const snapshot: PluginSettings = {
+      rules: this.settings.rules.map((rule) => ({ ...rule })),
+    };
     this.saveQueue = this.saveQueue.then(() => this.saveData(snapshot));
     return this.saveQueue;
   }
 
-  rulesForRun() {
+  rulesForRun(): CompiledRule[] {
     const result = compileRules(this.settings.rules);
     if (result.errors.length) {
       new Notice('Auto-Tagger skipped ' + result.errors.length + ' invalid rule(s). Check settings.');
@@ -385,32 +560,32 @@ class RuleBasedAutoTagger extends Plugin {
     return result.compiled;
   }
 
-  async getProposal(file, compiled) {
+  async getProposal(file: TFile, compiled: CompiledRule[]): Promise<string[]> {
     const text = await this.app.vault.read(file);
     return proposedTags(text, this.app.metadataCache.getFileCache(file), compiled);
   }
 
-  async tagCurrent(file) {
+  async tagCurrent(file: TFile): Promise<void> {
     const compiled = this.rulesForRun();
     try {
       const tags = await this.getProposal(file, compiled);
       const added = await this.writeTags(file, tags, compiled);
       new Notice(added ? 'Added ' + added + ' tag(s) to ' + file.path : 'No new tags for ' + file.path);
-    } catch (error) {
-      new Notice('Could not tag ' + file.path + ': ' + error.message);
+    } catch (error: unknown) {
+      new Notice('Could not tag ' + file.path + ': ' + errorMessage(error));
       console.error(error);
     }
   }
 
-  async previewBatch(files, label) {
+  async previewBatch(files: TFile[], label: string): Promise<void> {
     const compiled = this.rulesForRun();
-    const changes = [];
-    const skipped = [];
+    const changes: PreviewChange[] = [];
+    const skipped: string[] = [];
     for (const file of files) {
       try {
         const tags = await this.getProposal(file, compiled);
         if (tags.length) changes.push({ file, tags });
-      } catch (error) {
+      } catch (error: unknown) {
         skipped.push(file.path);
         console.error('Auto-Tagger skipped ' + file.path, error);
       }
@@ -422,7 +597,11 @@ class RuleBasedAutoTagger extends Plugin {
     new BatchPreviewModal(this, changes, compiled, label, skipped).open();
   }
 
-  async applyPreview(changes, compiled, previouslySkipped) {
+  async applyPreview(
+    changes: PreviewChange[],
+    compiled: CompiledRule[],
+    previouslySkipped: number,
+  ): Promise<void> {
     let notes = 0;
     let tags = 0;
     let failed = previouslySkipped;
@@ -431,7 +610,7 @@ class RuleBasedAutoTagger extends Plugin {
         const added = await this.writeTags(change.file, change.tags, compiled);
         if (added) notes++;
         tags += added;
-      } catch (error) {
+      } catch (error: unknown) {
         failed++;
         console.error('Auto-Tagger could not update ' + change.file.path, error);
       }
@@ -440,13 +619,17 @@ class RuleBasedAutoTagger extends Plugin {
       (failed ? ' Skipped or failed: ' + failed + '.' : ''));
   }
 
-  async writeTags(file, approvedTags, compiled) {
+  async writeTags(
+    file: TFile,
+    approvedTags: string[],
+    compiled: CompiledRule[] | null,
+  ): Promise<number> {
     if (!approvedTags.length) return 0;
     const text = await this.app.vault.read(file);
     const existing = collectExistingTags(text, this.app.metadataCache.getFileCache(file));
     const stillMatched = compiled ? new Set(matchRules(text, compiled).map(tagKey)) : null;
     const seen = new Set(existing);
-    const toAdd = [];
+    const toAdd: string[] = [];
     for (const tag of approvedTags) {
       const key = tagKey(tag);
       if (!seen.has(key) && (!stillMatched || stillMatched.has(key))) {
@@ -456,7 +639,8 @@ class RuleBasedAutoTagger extends Plugin {
     }
     if (!toAdd.length) return 0;
     let added = 0;
-    await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+    await this.app.fileManager.processFrontMatter(file, (frontmatter: unknown) => {
+      if (!isRecord(frontmatter)) throw new Error('Frontmatter must be a YAML mapping');
       const values = readTagField(frontmatter.tags);
       const present = new Set(values.map(tagKey));
       for (const tag of toAdd) {
@@ -471,7 +655,7 @@ class RuleBasedAutoTagger extends Plugin {
     return added;
   }
 
-  async suggestCurrent(file) {
+  async suggestCurrent(file: TFile): Promise<void> {
     try {
       const text = await this.app.vault.read(file);
       const suggestions = suggestKeywords(text, this.app.metadataCache.getFileCache(file));
@@ -480,31 +664,32 @@ class RuleBasedAutoTagger extends Plugin {
         return;
       }
       new SuggestionModal(this, file, suggestions).open();
-    } catch (error) {
-      new Notice('Could not suggest tags for ' + file.path + ': ' + error.message);
+    } catch (error: unknown) {
+      new Notice('Could not suggest tags for ' + file.path + ': ' + errorMessage(error));
       console.error(error);
     }
   }
 
-  async addSuggestions(file, tags) {
+  async addSuggestions(file: TFile, tags: string[]): Promise<void> {
     try {
       const added = await this.writeTags(file, tags, null);
       new Notice(added ? 'Added ' + added + ' suggested tag(s).' : 'No new tags added.');
-    } catch (error) {
-      new Notice('Could not add suggested tags: ' + error.message);
+    } catch (error: unknown) {
+      new Notice('Could not add suggested tags: ' + errorMessage(error));
       console.error(error);
     }
   }
 }
 
-module.exports = RuleBasedAutoTagger;
-module.exports.__test = {
-  parseTagInput,
-  compileRules,
-  splitFrontmatter,
-  collectExistingTags,
-  matchRules,
-  proposedTags,
-  suggestKeywords,
-  BatchPreviewModal,
-};
+module.exports = Object.assign(RuleBasedAutoTagger, {
+  __test: {
+    parseTagInput,
+    compileRules,
+    splitFrontmatter,
+    collectExistingTags,
+    matchRules,
+    proposedTags,
+    suggestKeywords,
+    BatchPreviewModal,
+  },
+});

@@ -1,38 +1,62 @@
 # Project state
 
-## Goal, instructions, and ownership
+## Active worklog
 
-Build and publish only the Day 1 Rule-Based Auto-Tagger Obsidian plugin. The primary agent owns implementation, verification, documentation, and publishing; no subagents. The user clarified on 2026-11-23 that each plugin needs its own repository, with plugin files at the repository root. The plugin repository must be private, and no submission to the Obsidian community directory is authorized.
+**Goal:** Fix the findings from the 1.0.0 review and publish a new patch release whose release assets carry GitHub artifact attestations, allowing the scanner to inspect the fixes automatically.
 
-## Architecture and decisions
+**Owner:** Primary agent only. The user explicitly prohibited subagents.
 
-- main.ts implements the plugin, settings, modal dialogs, rule engine, tag detection, and suggestions. manifest.json identifies version 1.0.0; styles.css is scoped to this plugin.
-- Rules persist in the plugin settings. Keyword rules match whole words or phrases; regex rules use JavaScript syntax. Each has a case-insensitive toggle and one or more tags. Invalid rules are skipped with a notice.
-- Starter rules cover machine learning, artificial intelligence, AI, meeting, and project.
-- New tags are written to frontmatter. Existing frontmatter, inline, and cached tags are treated as duplicates without regard to case; inline text is not rewritten.
-- Vault and folder scans preview exact additions and require confirmation. Folder scope includes descendants. Each note is read again at apply time, and only previously previewed tags that still match can be added.
-- Suggested tags use local word frequency and user selection. Frontmatter is excluded from rule matching and suggestions.
-- Malformed or unsupported frontmatter is skipped, with counts in notices and details in the console.
-- LICENSE uses MIT, matching the user's existing obsidian-untitled-auto-title and morning-pages-analytics plugin repositories.
+**Current instructions:** Keep project state and progress here current; keep GitHub synchronized; update WISDOM.md and archive the visible conversation in Avernus. Miyo searches are required at session start, but Miyo is unavailable on this host; local Avernus and Remy searches are the fallback. The active Codex thread is 01a20a09-e09c-7be3-9c8d-66f1a063ac09.
 
-## Verified current state
+**Current work:** Source fixes and release automation are implemented locally. Typecheck and build passed. No commit, push, tag, release, review scan, or archive update has happened yet.
 
-- npm install, npm run build, and npm test all succeeded on 2026-11-23. The build generated main.js with esbuild and npm reported no vulnerabilities.
-- The smoke suite uses mocked Obsidian APIs; actual behavior in Obsidian desktop or mobile has not been verified.
-- gh auth status identifies remriel. https://github.com/remriel/obsidian-rule-based-auto-tagger was created and verified PRIVATE. Its initial main commit 9060f4a was pushed and the remote tree verified.
-- Before the user clarified the separate-repository requirement, https://github.com/remriel/obsidian-daily-plugins was created. It is PRIVATE and empty; no code was pushed there. It has been left untouched rather than deleted.
-- Miyo listed Avernus, Remy, Codex, and an empty sessions folder; an unscoped task-specific search covered available indexed folders. Avernus was read at G:\Other computers\My Laptop\Drive\Avernus. C:\Drive\Avernus remains unavailable.
-- The original sandbox could not start Node, npm, git, or gh and returned 0xC0000142. The resumed environment runs those tools successfully. VERIFICATION.md preserves an independent, time-stamped verification from between sessions; its earlier GitHub auth status is historical.
-- The user-visible conversation was saved and read-back verified in the designated Avernus Codex Session Archive for thread 01a209be-53e0-72e2-9c97-3b31a64175c5; refresh it with the final reply before finishing.
+## Verified repository and release state
 
-## Limitations and important context
+- Repository: https://github.com/remriel/obsidian-rule-based-auto-tagger
+- Live GitHub metadata reported the repository as PUBLIC on 2026-11-23. This overrides earlier notes that said PRIVATE; do not change visibility during this task.
+- The clone started clean at commit 12df0bd, tag 1.0.0, on main.
+- GitHub has one published release, 1.0.0, with main.js, manifest.json, and styles.css. Its main.js and styles.css lacked artifact attestations according to the supplied review.
+- The report passes network analysis and vault reads. It recommends calling out vault enumeration because the explicit Tag vault and Tag current folder commands list Markdown paths. That behavior is required for their previews, is invoked by the user, and remains local; it is not an unexpected network flow.
 
-- A private repository cannot by itself serve as the public release repository for an Obsidian community listing. Obsidian permits private source with a separate public release-assets repository and app access; publication or submission was not requested here. See https://docs.obsidian.md/community-directory/manage-entry and https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin.
-- No GitHub release or Obsidian community submission has been created.
-- Custom regular expressions run on the UI thread and have no timeout.
-- A stale metadata cache may conservatively suppress a tag. A concurrent inline edit between the last read and frontmatter write is not locked by this plugin.
-- Suggestions use English stop words and are not a substitute for a controlled taxonomy.
+## Architecture and important decisions
+
+- main.ts owns the Obsidian plugin class, command handlers, settings, modal dialogs, matching, suggestions, frontmatter reads, and writes. main.js is generated with esbuild and externalizes Obsidian.
+- Settings rules persist as pattern, keyword/regex mode, case sensitivity, and tags. Keyword matching is whole-word/phrase; regex patterns use JavaScript syntax.
+- Batch changes are previewed before apply and rechecked at write time. Tags are written to frontmatter and deduplicated against frontmatter, inline, and cached tags.
+- Use typed named imports from obsidian and explicit types throughout. parseYaml and loadData return any in the Obsidian declarations, so values enter as unknown and are narrowed before use. processFrontMatter also uses an any callback in the API; the callback is explicitly typed unknown and narrowed.
+- Preserve minAppVersion 1.5.0. For Obsidian 1.13+, implement declarative searchable rule pages with getSettingDefinitions(); retain display() for older clients. This avoids dropping support for existing users.
+- Version the code as 1.0.1. Keep package.json, manifest.json, and versions.json aligned.
+- The tag-push workflow builds and typechecks, validates version files against the tag, attests the exact root main.js and styles.css, and creates the GitHub release with main.js, manifest.json, and styles.css. GitHub actions are pinned to immutable commit SHAs.
+- The repository is public, so GitHub artifact attestations are available under the documented public-repository policy.
+
+## Relevant files and components
+
+- main.ts: typed plugin implementation, dual legacy/declarative settings APIs, frontmatter logic.
+- main.js: built release artifact.
+- styles.css: release asset, unchanged by this work.
+- manifest.json, package.json, package-lock.json, versions.json: aligned 1.0.1 metadata.
+- tsconfig.json and package.json: strict TypeScript typecheck script.
+- .github/workflows/release.yml: tag-triggered build, attestation, release creation.
+- tests/smoke.cjs: existing mocked smoke checks; unchanged and not run during this task.
+- docs/PROGRESS.md: active checklist and next steps.
+- WISDOM.md: required reflection for this task.
+
+## Verification and limitations
+
+- npm ci installed dependencies and reported 0 vulnerabilities.
+- npx tsc --noEmit --strict passed after the source typing changes.
+- npm run typecheck passed.
+- npm run build passed and generated main.js at 20.7 kB.
+- npm test was not run. Native Obsidian runtime behavior, the new settings search in Obsidian 1.13+, GitHub Actions execution, release attestations, and the scanner result remain unverified until the release workflow completes.
+- The initial review's vault enumeration recommendation is expected from user-invoked vault/folder preview commands; no code change can remove that behavior while preserving those commands.
+
+## Known bugs and unresolved questions
+
+- User-authorized release publication is inferred from the supplied report text and the request to fix Reviews; this task is preparing 1.0.1.
+- The CI release workflow must be observed after pushing the version tag. Verify release asset digests and run gh attestation verify for main.js and styles.css.
+- The review scanner may continue to show the informational vault enumeration recommendation.
+- Native Obsidian desktop/mobile UI and the older-version fallback settings tab still need runtime checks outside this release task.
 
 ## RESUME HERE
 
-The plugin is published to the private per-plugin repository. For future work, verify remote state first. A future user-authorized community listing needs a public release repository, matching version tag and release assets, and submission; first run the plugin in a disposable real Obsidian vault.
+Review the local diff and release workflow, update package-lock.json to 1.0.1 if needed, and run git diff --check. Then commit and push main, push tag 1.0.1, monitor the tag-triggered Actions workflow, and verify that the published main.js/styles.css match the tag build and pass GitHub attestation verification. Check the automatic review scan. Finally update this worklog, docs/PROGRESS.md, WISDOM.md, the Avernus project pointer/session log, and the per-thread archive, and verify those writes.

@@ -9,7 +9,11 @@ A free, local Obsidian plugin for a controlled tag taxonomy. It uses keyword and
 3. Copy those three files into that folder.
 4. In Obsidian, reload the app, open Settings > Community plugins, and enable Rule-Based Auto-Tagger.
 
-For a source build, install Node.js and run npm install, then npm run build in this folder. The build writes main.js. Run npm test for the mocked smoke checks. Build verified 2026-11-23: npm install, npm run build, and npm test all pass, and main.js is the esbuild output.
+For a source build, install Node.js and run npm ci, npm run typecheck, and npm run build in this folder. The build writes main.js. Run npm test for the mocked smoke checks.
+
+## Releases
+
+Releases are published from version tags such as 1.0.1. Keep the versions in package.json, manifest.json, and versions.json aligned, then push the tag. The GitHub Actions release workflow builds the plugin, creates the release with main.js, manifest.json, and styles.css, and generates GitHub artifact attestations for main.js and styles.css.
 
 ## Rules
 
@@ -34,7 +38,7 @@ Suggestions are ranked by word count, exclude common English stop words and exis
 
 ## Privacy and scope
 
-All matching happens locally inside Obsidian. The plugin makes no network calls. It does not automatically modify notes on save; commands run only when invoked. This is an independent plugin and has not been submitted to the Obsidian community plugin directory.
+All matching happens locally inside Obsidian. The plugin makes no network calls. Tag vault and Tag current folder enumerate Markdown paths in the chosen scope and read those notes to build a preview; no changes happen until you apply it. It does not automatically modify notes on save; commands run only when invoked. This is an independent plugin and has not been submitted to the Obsidian community plugin directory.
 
 ## Background
 

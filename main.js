@@ -1,13 +1,7 @@
+"use strict";
+
 // main.ts
-var {
-  Plugin,
-  PluginSettingTab,
-  Modal,
-  Notice,
-  Setting,
-  getAllTags,
-  parseYaml
-} = require("obsidian");
+var import_obsidian = require("obsidian");
 var STARTER_RULES = [
   { pattern: "machine learning", mode: "keyword", ignoreCase: true, tags: "ai, ml" },
   { pattern: "artificial intelligence", mode: "keyword", ignoreCase: true, tags: "ai" },
@@ -17,6 +11,28 @@ var STARTER_RULES = [
 ];
 var VALID_TAG = /^(?=.*[\p{L}_-])[\p{L}\p{N}_-]+(?:\/[\p{L}\p{N}_-]+)*$/u;
 var STOP_WORDS = new Set("about above after again against all also among and any are around because been before being below between both but can could did does doing down during each even every few for from further get had has have having her here hers herself him himself his how into its itself just may more most much must nor not now off once only other our ours ourselves out over own same she should some such than that the their theirs them themselves then there these they this those through too under until very was were what when where which while who whom why will with would you your yours yourself yourselves".split(" "));
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function normalizeRule(value) {
+  if (!isRecord(value)) return null;
+  return {
+    pattern: typeof value.pattern === "string" ? value.pattern : "",
+    mode: value.mode === "regex" ? "regex" : "keyword",
+    ignoreCase: value.ignoreCase !== false,
+    tags: typeof value.tags === "string" ? value.tags : ""
+  };
+}
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+function getRuleSetting(settings, key) {
+  const match = /^rules\.(\d+)\.(pattern|mode|ignoreCase|tags)$/.exec(key);
+  if (!match) return null;
+  const rule = settings.rules[Number(match[1])];
+  if (!rule) return null;
+  return { rule, property: match[2] };
+}
 function cleanTag(value) {
   return String(value).trim().replace(/^#+/, "");
 }
@@ -60,7 +76,7 @@ function compileRules(rules) {
       const source = rule.mode === "regex" ? pattern : "(^|[^\\p{L}\\p{N}_])" + escapeRegex(pattern) + "(?=$|[^\\p{L}\\p{N}_])";
       const regex = new RegExp(source, rule.ignoreCase ? "iu" : "u");
       compiled.push({ regex, tags: parsed.tags });
-    } catch (error) {
+    } catch {
       errors.push("Rule " + (index + 1) + " has an invalid regular expression.");
     }
   }
@@ -85,11 +101,12 @@ function collectExistingTags(content, cache) {
   const existing = /* @__PURE__ */ new Set();
   const parts = splitFrontmatter(content);
   if (parts.yaml !== null) {
-    const frontmatter = parseYaml(parts.yaml);
-    if (frontmatter !== null && frontmatter !== void 0 && (typeof frontmatter !== "object" || Array.isArray(frontmatter))) {
+    const frontmatter = (0, import_obsidian.parseYaml)(parts.yaml);
+    if (frontmatter !== null && frontmatter !== void 0 && !isRecord(frontmatter)) {
       throw new Error("Frontmatter must be a YAML mapping");
     }
-    for (const tag of readTagField(frontmatter && frontmatter.tags)) {
+    const values = isRecord(frontmatter) ? frontmatter.tags : void 0;
+    for (const tag of readTagField(values)) {
       existing.add(tagKey(tag));
     }
   }
@@ -97,7 +114,7 @@ function collectExistingTags(content, cache) {
   let match;
   while ((match = inline.exec(parts.body)) !== null) existing.add(tagKey(match[1]));
   if (cache) {
-    for (const tag of getAllTags(cache) || []) existing.add(tagKey(tag));
+    for (const tag of (0, import_obsidian.getAllTags)(cache) || []) existing.add(tagKey(tag));
   }
   return existing;
 }
@@ -134,8 +151,7 @@ function suggestKeywords(content, cache, limit = 10) {
   }
   return Array.from(counts, ([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)).slice(0, limit);
 }
-var BatchPreviewModal = class extends Modal {
-  // @type-only
+var BatchPreviewModal = class extends import_obsidian.Modal {
   constructor(plugin, changes, compiled, label, skipped) {
     super(plugin.app);
     this.plugin = plugin;
@@ -175,7 +191,7 @@ var BatchPreviewModal = class extends Modal {
     this.contentEl.empty();
   }
 };
-var SuggestionModal = class extends Modal {
+var SuggestionModal = class extends import_obsidian.Modal {
   // @type-only
   constructor(plugin, file, suggestions) {
     super(plugin.app);
@@ -190,7 +206,7 @@ var SuggestionModal = class extends Modal {
     content.createEl("h2", { text: "Suggested tags" });
     content.createEl("p", { text: "Choose local keyword suggestions for " + this.file.path + "." });
     for (const item of this.suggestions) {
-      new Setting(content).setName("#" + item.tag).setDesc(item.count + " occurrence(s)").addToggle((toggle) => toggle.setValue(true).onChange((value) => {
+      new import_obsidian.Setting(content).setName("#" + item.tag).setDesc(item.count + " occurrence(s)").addToggle((toggle) => toggle.setValue(true).onChange((value) => {
         if (value) this.selected.add(item.tag);
         else this.selected.delete(item.tag);
       }));
@@ -207,16 +223,126 @@ var SuggestionModal = class extends Modal {
     this.contentEl.empty();
   }
 };
-var AutoTaggerSettingsTab = class extends PluginSettingTab {
-  // @type-only
+var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
   }
+  getControlValue(key) {
+    const setting = getRuleSetting(this.plugin.settings, key);
+    if (!setting) return void 0;
+    return setting.rule[setting.property];
+  }
+  async setControlValue(key, value) {
+    const setting = getRuleSetting(this.plugin.settings, key);
+    if (!setting) return;
+    switch (setting.property) {
+      case "pattern":
+      case "tags":
+        if (typeof value !== "string") return;
+        setting.rule[setting.property] = value;
+        break;
+      case "mode":
+        if (value !== "keyword" && value !== "regex") return;
+        setting.rule.mode = value;
+        break;
+      case "ignoreCase":
+        if (typeof value !== "boolean") return;
+        setting.rule.ignoreCase = value;
+        break;
+    }
+    await this.plugin.saveSettings();
+  }
+  // Obsidian 1.13+ uses these definitions for rendering and global settings search.
+  getSettingDefinitions() {
+    const rules = this.plugin.settings.rules;
+    return [
+      {
+        name: "Rule behavior",
+        desc: "Rules scan note bodies. Keywords match whole words or phrases. Regular expressions use JavaScript syntax without slash delimiters."
+      },
+      {
+        type: "list",
+        heading: "Rules",
+        emptyState: "No rules yet. Add a rule to get started.",
+        items: rules.map((rule, index) => ({
+          type: "page",
+          name: "Rule " + (index + 1),
+          desc: rule.pattern ? "Pattern: " + rule.pattern + "; tags: " + rule.tags : "Set the pattern and tags for this rule.",
+          aliases: [rule.pattern, ...parseTagInput(rule.tags).tags],
+          items: [
+            {
+              name: "Pattern",
+              control: {
+                type: "text",
+                key: "rules." + index + ".pattern",
+                placeholder: "machine learning"
+              }
+            },
+            {
+              name: "Match type",
+              control: {
+                type: "dropdown",
+                key: "rules." + index + ".mode",
+                defaultValue: "keyword",
+                options: {
+                  keyword: "Keyword or phrase",
+                  regex: "Regular expression"
+                }
+              }
+            },
+            {
+              name: "Case-insensitive",
+              control: {
+                type: "toggle",
+                key: "rules." + index + ".ignoreCase",
+                defaultValue: true
+              }
+            },
+            {
+              name: "Tags",
+              control: {
+                type: "text",
+                key: "rules." + index + ".tags",
+                placeholder: "ai, ml"
+              }
+            }
+          ]
+        })),
+        onDelete: async (index) => {
+          this.plugin.settings.rules.splice(index, 1);
+          await this.plugin.saveSettings();
+          this.update();
+        },
+        onReorder: async (oldIndex, newIndex) => {
+          if (oldIndex === newIndex) return;
+          const moved = this.plugin.settings.rules.splice(oldIndex, 1)[0];
+          if (!moved) return;
+          this.plugin.settings.rules.splice(newIndex, 0, moved);
+          await this.plugin.saveSettings();
+          this.update();
+        },
+        addItem: {
+          name: "Add rule",
+          action: async () => {
+            this.plugin.settings.rules.push({
+              pattern: "",
+              mode: "keyword",
+              ignoreCase: true,
+              tags: ""
+            });
+            await this.plugin.saveSettings();
+            this.update();
+          }
+        }
+      }
+    ];
+  }
+  // Older supported Obsidian versions use the legacy renderer below.
   display() {
     const container = this.containerEl;
     container.empty();
-    container.createEl("h2", { text: "Rule-Based Auto-Tagger" });
+    new import_obsidian.Setting(container).setName("Rule-Based Auto-Tagger").setHeading();
     container.createEl("p", {
       text: "Rules scan note bodies. Keywords match whole words or phrases. Regex patterns use JavaScript syntax without slash delimiters."
     });
@@ -225,53 +351,50 @@ var AutoTaggerSettingsTab = class extends PluginSettingTab {
     });
     this.plugin.settings.rules.forEach((rule, index) => {
       const row = container.createDiv({ cls: "auto-tagger-rule" });
-      new Setting(row).setName("Rule " + (index + 1)).addButton((button) => button.setButtonText("Remove").onClick(async () => {
+      new import_obsidian.Setting(row).setName("Rule " + (index + 1)).addButton((button) => button.setButtonText("Remove").onClick(async () => {
         this.plugin.settings.rules.splice(index, 1);
         await this.plugin.saveSettings();
         this.display();
       }));
-      new Setting(row).setName("Pattern").addText((text) => text.setPlaceholder("machine learning").setValue(rule.pattern).onChange(async (value) => {
+      new import_obsidian.Setting(row).setName("Pattern").addText((text) => text.setPlaceholder("machine learning").setValue(rule.pattern).onChange(async (value) => {
         rule.pattern = value;
         await this.plugin.saveSettings();
       }));
-      new Setting(row).setName("Match type").addDropdown((dropdown) => dropdown.addOption("keyword", "Keyword or phrase").addOption("regex", "Regular expression").setValue(rule.mode).onChange(async (value) => {
-        rule.mode = value;
-        await this.plugin.saveSettings();
+      new import_obsidian.Setting(row).setName("Match type").addDropdown((dropdown) => dropdown.addOption("keyword", "Keyword or phrase").addOption("regex", "Regular expression").setValue(rule.mode).onChange(async (value) => {
+        if (value === "keyword" || value === "regex") {
+          rule.mode = value;
+          await this.plugin.saveSettings();
+        }
       }));
-      new Setting(row).setName("Case-insensitive").addToggle((toggle) => toggle.setValue(rule.ignoreCase).onChange(async (value) => {
+      new import_obsidian.Setting(row).setName("Case-insensitive").addToggle((toggle) => toggle.setValue(rule.ignoreCase).onChange(async (value) => {
         rule.ignoreCase = value;
         await this.plugin.saveSettings();
       }));
-      new Setting(row).setName("Tags").addText((text) => text.setPlaceholder("ai, ml").setValue(rule.tags).onChange(async (value) => {
+      new import_obsidian.Setting(row).setName("Tags").addText((text) => text.setPlaceholder("ai, ml").setValue(rule.tags).onChange(async (value) => {
         rule.tags = value;
         await this.plugin.saveSettings();
       }));
     });
-    new Setting(container).addButton((button) => button.setButtonText("Add rule").onClick(async () => {
+    new import_obsidian.Setting(container).addButton((button) => button.setButtonText("Add rule").onClick(async () => {
       this.plugin.settings.rules.push({ pattern: "", mode: "keyword", ignoreCase: true, tags: "" });
       await this.plugin.saveSettings();
       this.display();
     }));
   }
 };
-var RuleBasedAutoTagger = class extends Plugin {
+var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
   constructor() {
     super(...arguments);
-    // @type-only
     this.saveQueue = Promise.resolve();
   }
   async onload() {
     const stored = await this.loadData();
-    const source = stored && Array.isArray(stored.rules) ? stored.rules : STARTER_RULES;
+    const rawRules = isRecord(stored) && Array.isArray(stored.rules) ? stored.rules : null;
+    const source = rawRules ? rawRules.map(normalizeRule).filter((rule) => rule !== null) : STARTER_RULES;
     this.settings = {
-      rules: source.filter((rule) => rule && typeof rule === "object").map((rule) => ({
-        pattern: typeof rule.pattern === "string" ? rule.pattern : "",
-        mode: rule.mode === "regex" ? "regex" : "keyword",
-        ignoreCase: rule.ignoreCase !== false,
-        tags: typeof rule.tags === "string" ? rule.tags : ""
-      }))
+      rules: source
     };
-    if (!stored || !Array.isArray(stored.rules)) await this.saveSettings();
+    if (!rawRules || source.length !== rawRules.length) await this.saveSettings();
     this.addSettingTab(new AutoTaggerSettingsTab(this.app, this));
     this.addCommand({
       id: "tag-current-note",
@@ -317,14 +440,16 @@ var RuleBasedAutoTagger = class extends Plugin {
     });
   }
   async saveSettings() {
-    const snapshot = JSON.parse(JSON.stringify(this.settings));
+    const snapshot = {
+      rules: this.settings.rules.map((rule) => ({ ...rule }))
+    };
     this.saveQueue = this.saveQueue.then(() => this.saveData(snapshot));
     return this.saveQueue;
   }
   rulesForRun() {
     const result = compileRules(this.settings.rules);
     if (result.errors.length) {
-      new Notice("Auto-Tagger skipped " + result.errors.length + " invalid rule(s). Check settings.");
+      new import_obsidian.Notice("Auto-Tagger skipped " + result.errors.length + " invalid rule(s). Check settings.");
       console.warn("Rule-Based Auto-Tagger:", result.errors);
     }
     return result.compiled;
@@ -338,9 +463,9 @@ var RuleBasedAutoTagger = class extends Plugin {
     try {
       const tags = await this.getProposal(file, compiled);
       const added = await this.writeTags(file, tags, compiled);
-      new Notice(added ? "Added " + added + " tag(s) to " + file.path : "No new tags for " + file.path);
+      new import_obsidian.Notice(added ? "Added " + added + " tag(s) to " + file.path : "No new tags for " + file.path);
     } catch (error) {
-      new Notice("Could not tag " + file.path + ": " + error.message);
+      new import_obsidian.Notice("Could not tag " + file.path + ": " + errorMessage(error));
       console.error(error);
     }
   }
@@ -358,7 +483,7 @@ var RuleBasedAutoTagger = class extends Plugin {
       }
     }
     if (!changes.length) {
-      new Notice("No new tags found." + (skipped.length ? " Skipped " + skipped.length + " note(s)." : ""));
+      new import_obsidian.Notice("No new tags found." + (skipped.length ? " Skipped " + skipped.length + " note(s)." : ""));
       return;
     }
     new BatchPreviewModal(this, changes, compiled, label, skipped).open();
@@ -377,7 +502,7 @@ var RuleBasedAutoTagger = class extends Plugin {
         console.error("Auto-Tagger could not update " + change.file.path, error);
       }
     }
-    new Notice("Added " + tags + " tag(s) to " + notes + " note(s)." + (failed ? " Skipped or failed: " + failed + "." : ""));
+    new import_obsidian.Notice("Added " + tags + " tag(s) to " + notes + " note(s)." + (failed ? " Skipped or failed: " + failed + "." : ""));
   }
   async writeTags(file, approvedTags, compiled) {
     if (!approvedTags.length) return 0;
@@ -396,6 +521,7 @@ var RuleBasedAutoTagger = class extends Plugin {
     if (!toAdd.length) return 0;
     let added = 0;
     await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+      if (!isRecord(frontmatter)) throw new Error("Frontmatter must be a YAML mapping");
       const values = readTagField(frontmatter.tags);
       const present = new Set(values.map(tagKey));
       for (const tag of toAdd) {
@@ -414,33 +540,34 @@ var RuleBasedAutoTagger = class extends Plugin {
       const text = await this.app.vault.read(file);
       const suggestions = suggestKeywords(text, this.app.metadataCache.getFileCache(file));
       if (!suggestions.length) {
-        new Notice("No new keyword suggestions for " + file.path);
+        new import_obsidian.Notice("No new keyword suggestions for " + file.path);
         return;
       }
       new SuggestionModal(this, file, suggestions).open();
     } catch (error) {
-      new Notice("Could not suggest tags for " + file.path + ": " + error.message);
+      new import_obsidian.Notice("Could not suggest tags for " + file.path + ": " + errorMessage(error));
       console.error(error);
     }
   }
   async addSuggestions(file, tags) {
     try {
       const added = await this.writeTags(file, tags, null);
-      new Notice(added ? "Added " + added + " suggested tag(s)." : "No new tags added.");
+      new import_obsidian.Notice(added ? "Added " + added + " suggested tag(s)." : "No new tags added.");
     } catch (error) {
-      new Notice("Could not add suggested tags: " + error.message);
+      new import_obsidian.Notice("Could not add suggested tags: " + errorMessage(error));
       console.error(error);
     }
   }
 };
-module.exports = RuleBasedAutoTagger;
-module.exports.__test = {
-  parseTagInput,
-  compileRules,
-  splitFrontmatter,
-  collectExistingTags,
-  matchRules,
-  proposedTags,
-  suggestKeywords,
-  BatchPreviewModal
-};
+module.exports = Object.assign(RuleBasedAutoTagger, {
+  __test: {
+    parseTagInput,
+    compileRules,
+    splitFrontmatter,
+    collectExistingTags,
+    matchRules,
+    proposedTags,
+    suggestKeywords,
+    BatchPreviewModal
+  }
+});
