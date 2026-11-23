@@ -1,6 +1,6 @@
 {
   "name": "rule-based-auto-tagger",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "A local rule-based auto-tagger for Obsidian.",
   "scripts": {

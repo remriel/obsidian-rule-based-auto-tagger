@@ -13,7 +13,7 @@ For a source build, install Node.js and run npm ci, npm run typecheck, and npm r
 
 ## Releases
 
-Releases are published from version tags such as 1.0.1. Keep the versions in package.json, manifest.json, and versions.json aligned, then push the tag. The GitHub Actions release workflow builds the plugin, creates the release with main.js, manifest.json, and styles.css, and generates GitHub artifact attestations for main.js and styles.css.
+Releases are published from version tags such as 1.0.2. Keep the versions in package.json, manifest.json, and versions.json aligned, then push the tag. The GitHub Actions release workflow builds the plugin, creates the release with main.js, manifest.json, and styles.css, and generates GitHub artifact attestations for main.js and styles.css.
 
 ## Rules
 

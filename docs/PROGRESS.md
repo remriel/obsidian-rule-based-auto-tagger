@@ -1,61 +1,40 @@
-# Progress
+# Progress — Rule-Based Auto-Tagger 1.0.2
 
-**Objective:** Fix the 1.0.0 review findings and publish a 1.0.1 release with GitHub artifact attestations for main.js and styles.css so the release can be scanned again.
+**Objective:** Publish a 1.0.2 GitHub release containing the current settings fixes, with attested release assets.
 
-**Progress:** 70 percent toward a verified release. Local source changes, version metadata, release automation, strict typecheck, and build are ready. GitHub publication, attestation verification, scanner rescan, and memory/archive updates remain.
+**Progress:** 45% — the fixes are already committed and locally verified; version metadata is being updated. Tagging, publication, and remote asset verification remain.
 
 ## Checklist
 
-- [x] Read current project state, inspect clean Git status, and confirm live GitHub state.
-- [x] Confirm the remote repository is PUBLIC and the 1.0.0 assets are missing attestations.
-- [x] Replace require('obsidian') with typed imports and type the plugin paths flagged as unsafe.
-- [x] Replace the settings tab's direct HTML heading with Setting.setHeading().
-- [x] Add searchable declarative rule pages for Obsidian 1.13+ while preserving the legacy UI for 1.5+.
-- [x] Add strict TypeScript typechecking and 1.0.1 version metadata.
-- [x] Add a pinned GitHub Actions workflow that builds, attests main.js/styles.css, and publishes the release on a version tag.
-- [x] Run npm ci, npm run typecheck, and npm run build successfully.
-- [ ] Inspect final diff, validate workflow and metadata, and run git diff --check.
-- [ ] Commit and push the fixes to main.
-- [ ] Push tag 1.0.1 and wait for the release workflow.
-- [ ] Verify release asset digests and GitHub attestations, then inspect the automatic review scan.
-- [ ] Update this progress note, docs/PROJECT_STATE.md, WISDOM.md, and the Avernus memory pointer/session log.
-- [ ] Archive this thread's visible conversation in Avernus and verify the write.
+- [x] Search all available Miyo folders and read relevant Avernus context.
+- [x] Confirm the working tree was clean and `main` matched `origin/main` at the fixes commit.
+- [x] Confirm 1.0.1 is the latest published release and the tag-triggered workflow is enabled.
+- [x] Reconcile current settings fixes from commit `29f2715`; previous project checks report smoke, typecheck, build, lint, and diff checks passing.
+- [ ] Align package, lockfile, manifest, and versions metadata at 1.0.2.
+- [ ] Review release diff and `git diff --check`.
+- [ ] Commit and push the release metadata to `main`.
+- [ ] Push tag 1.0.2 and wait for Actions.
+- [ ] Verify release assets, SHA-256 digests, and GitHub attestations.
+- [ ] Update final project notes, Avernus handoff/session log, and thread archive.
 
-## Current implementation state
+## Current implementation
 
-main.ts now uses typed Obsidian imports, explicit domain types, safe narrowing for untyped API results, and unknown error handling. Its settings tab uses Setting.setHeading(); Obsidian 1.13+ gets declarative searchable rule pages, while older supported versions retain the imperative settings tab. Version files are being aligned to 1.0.1. The release workflow is configured to attest the exact release JavaScript and CSS assets before creating a GitHub release.
+The source fixes are already in `main` at `29f2715decb839068ab02197ef07614ae9fce6f1`. Version 1.0.2 is the next patch release after published 1.0.1. The release workflow performs typecheck/build/version checks, creates attestations, and publishes `main.js`, `manifest.json`, and `styles.css`.
 
-## Verification performed
+## Verification and limits
 
-- npm ci: passed; 0 vulnerabilities reported.
-- npm run typecheck: passed.
-- npm run build: passed; generated main.js at 20.7 kB.
-- npm test: not run during this task.
-- No GitHub commit, tag, release, scanner rescan, or attestation verification has occurred yet.
+- Prior checks on `29f2715`: smoke tests, typecheck, build, targeted lint, and diff checks reported passing.
+- 1.0.1 GitHub release workflow: completed successfully.
+- 1.0.2 has not yet been tagged or published.
+- Native Obsidian UI and the separate automatic review scanner remain unverified.
 
-## Current blockers
+## Current blocker
 
-No local implementation blocker. Release publication and scan verification are pending the final diff review and GitHub push. Miyo CLI is unavailable; local Avernus and Remy searches are being used instead.
+None.
 
-## Exact ordered next steps
+## Exact next steps
 
-1. Inspect package-lock.json, versions.json, workflow YAML, and source diff; run git diff --check.
-2. Commit the completed changes and push main.
-3. Push tag 1.0.1 to trigger the release workflow.
-4. Monitor Actions, verify the new release assets and their attestations, and check the automatic review result.
-5. Update project notes, WISDOM.md, Avernus project memory/session log, and the current thread archive; verify all writes.
-## 2026-11-23 review follow-up
-
-Objective: Resolve the reported 1.0.1 findings and synchronize the source fixes to GitHub.
-
-Progress: 100% for verified source changes. A new release and hosted review are separate pending milestones.
-
-- [x] Fix all reported lines while retaining the 1.5.0 support floor.
-- [x] Typecheck, build, run smoke tests, and run the six relevant ESLint rules.
-- [x] Check the diff and rebuild the tracked bundle.
-
-Next release steps, when requested:
-
-1. Verify settings changes in native Obsidian on both settings API generations.
-2. Bump the version and push a new numeric tag.
-3. Check the release workflow, artifact attestations, and hosted Obsidian review.
+1. Confirm metadata alignment and inspect the diff.
+2. Commit and push `main`.
+3. Push tag `1.0.2` to start the release workflow.
+4. Verify the release, assets, and attestations; update all handoff and archive files.
