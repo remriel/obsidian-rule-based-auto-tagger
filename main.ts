@@ -18,13 +18,21 @@ import type {
 declare const module: { exports: unknown };
 
 type TagRule = { pattern: string; mode: 'keyword' | 'regex'; ignoreCase: boolean; tags: string };
-type PluginSettings = { rules: TagRule[] };
+type TagPlacement = 'frontmatter' | 'inline';
+type PluginSettings = { rules: TagRule[]; tagPlacement: TagPlacement };
 type CompiledRule = { regex: RegExp; tags: string[] };
 type RuleCompilation = { compiled: CompiledRule[]; errors: string[] };
 type FrontmatterParts = { yaml: string | null; body: string };
 type PreviewChange = { file: TFile; tags: string[] };
 type TagSuggestion = { tag: string; count: number };
 type RuleSettingProperty = keyof TagRule;
+
+const TAG_PLACEMENT_NAME = 'Where to put new tags';
+const TAG_PLACEMENT_DESCRIPTION = 'Existing frontmatter and inline tags both count as duplicates in either mode.';
+const TAG_PLACEMENT_OPTIONS = {
+  frontmatter: 'Frontmatter',
+  inline: 'Inline, at end of note',
+};
 
 const STARTER_RULES: TagRule[] = [
   { pattern: 'machine learning', mode: 'keyword', ignoreCase: true, tags: 'ai, ml' },
@@ -221,6 +229,7 @@ class BatchPreviewModal extends Modal {
   compiled: CompiledRule[];
   label: string;
   skipped: string[];
+  placement: TagPlacement;
 
   constructor(
     plugin: RuleBasedAutoTagger,
@@ -235,6 +244,7 @@ class BatchPreviewModal extends Modal {
     this.compiled = compiled;
     this.label = label;
     this.skipped = skipped;
+    this.placement = plugin.settings.tagPlacement;
   }
 
   onOpen(): void {
@@ -244,6 +254,11 @@ class BatchPreviewModal extends Modal {
     content.createEl('h2', { text: 'Preview tags: ' + this.label });
     content.createEl('p', {
       text: this.changes.length + ' note(s) would receive these tags. Nothing has been changed yet.',
+    });
+    content.createEl('p', {
+      text: this.placement === 'inline'
+        ? 'These tags will be added as inline tags at the end of each note.'
+        : 'These tags will be added to frontmatter.',
     });
     if (this.skipped.length) {
       content.createEl('p', { text: this.skipped.length + ' note(s) could not be read or had unsupported frontmatter.' });
@@ -261,7 +276,7 @@ class BatchPreviewModal extends Modal {
     apply.addEventListener('click', () => {
       apply.disabled = true;
       this.close();
-      void this.plugin.applyPreview(this.changes, this.compiled, this.skipped.length);
+      void this.plugin.applyPreview(this.changes, this.compiled, this.skipped.length, this.placement);
     });
   }
 
@@ -322,12 +337,20 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
   }
 
   getControlValue(key: string): unknown {
+    if (key === 'tagPlacement') return this.plugin.settings.tagPlacement;
     const setting = getRuleSetting(this.plugin.settings, key);
     if (!setting) return undefined;
     return setting.rule[setting.property];
   }
 
   async setControlValue(key: string, value: unknown): Promise<void> {
+    if (key === 'tagPlacement') {
+      if (value === 'frontmatter' || value === 'inline') {
+        this.plugin.settings.tagPlacement = value;
+        await this.plugin.saveSettings();
+      }
+      return;
+    }
     const setting = getRuleSetting(this.plugin.settings, key);
     if (!setting) return;
     switch (setting.property) {
@@ -355,6 +378,16 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
       {
         name: 'Rule behavior',
         desc: 'Rules scan note bodies. Keywords match whole words or phrases. Regular expressions use JavaScript syntax without slash delimiters.',
+      },
+      {
+        name: TAG_PLACEMENT_NAME,
+        desc: TAG_PLACEMENT_DESCRIPTION,
+        control: {
+          type: 'dropdown',
+          key: 'tagPlacement',
+          defaultValue: 'frontmatter',
+          options: TAG_PLACEMENT_OPTIONS,
+        },
       },
       {
         type: 'list',
@@ -457,6 +490,14 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
       text: 'Separate tags with commas or spaces. Tags may use letters, numbers, underscores, hyphens and nested slashes. Invalid rules are skipped.',
     });
 
+    new Setting(container)
+      .setName(TAG_PLACEMENT_NAME)
+      .setDesc(TAG_PLACEMENT_DESCRIPTION)
+      .addDropdown((dropdown) => dropdown
+        .addOptions(TAG_PLACEMENT_OPTIONS)
+        .setValue(this.plugin.settings.tagPlacement)
+        .onChange((value) => this.setControlValue('tagPlacement', value)));
+
     this.plugin.settings.rules.forEach((rule, index) => {
       const row = container.createDiv({ cls: 'auto-tagger-rule' });
       new Setting(row)
@@ -508,10 +549,14 @@ class RuleBasedAutoTagger extends Plugin {
     const source = rawRules
       ? rawRules.map(normalizeRule).filter((rule): rule is TagRule => rule !== null)
       : STARTER_RULES;
+    const storedPlacement = isRecord(stored) ? stored.tagPlacement : undefined;
     this.settings = {
       rules: source,
+      tagPlacement: storedPlacement === 'inline' ? 'inline' : 'frontmatter',
     };
-    if (!rawRules || source.length !== rawRules.length) await this.saveSettings();
+    if (!rawRules || source.length !== rawRules.length || storedPlacement !== this.settings.tagPlacement) {
+      await this.saveSettings();
+    }
     this.addSettingTab(new AutoTaggerSettingsTab(this.app, this));
     this.addCommand({
       id: 'tag-current-note',
@@ -558,6 +603,7 @@ class RuleBasedAutoTagger extends Plugin {
   async saveSettings(): Promise<void> {
     const snapshot: PluginSettings = {
       rules: this.settings.rules.map((rule) => ({ ...rule })),
+      tagPlacement: this.settings.tagPlacement,
     };
     this.saveQueue = this.saveQueue.then(() => this.saveData(snapshot));
     return this.saveQueue;
@@ -613,13 +659,14 @@ class RuleBasedAutoTagger extends Plugin {
     changes: PreviewChange[],
     compiled: CompiledRule[],
     previouslySkipped: number,
+    placement: TagPlacement = this.settings.tagPlacement,
   ): Promise<void> {
     let notes = 0;
     let tags = 0;
     let failed = previouslySkipped;
     for (const change of changes) {
       try {
-        const added = await this.writeTags(change.file, change.tags, compiled);
+        const added = await this.writeTags(change.file, change.tags, compiled, placement);
         if (added) notes++;
         tags += added;
       } catch (error: unknown) {
@@ -635,20 +682,37 @@ class RuleBasedAutoTagger extends Plugin {
     file: TFile,
     approvedTags: string[],
     compiled: CompiledRule[] | null,
+    placement: TagPlacement = this.settings.tagPlacement,
   ): Promise<number> {
     if (!approvedTags.length) return 0;
-    const text = await this.app.vault.read(file);
-    const existing = collectExistingTags(text, this.app.metadataCache.getFileCache(file));
-    const stillMatched = compiled ? new Set(matchRules(text, compiled).map(tagKey)) : null;
-    const seen = new Set(existing);
-    const toAdd: string[] = [];
-    for (const tag of approvedTags) {
-      const key = tagKey(tag);
-      if (!seen.has(key) && (!stillMatched || stillMatched.has(key))) {
-        seen.add(key);
-        toAdd.push(tag);
+    const getTagsToAdd = (text: string): string[] => {
+      const seen = collectExistingTags(text, this.app.metadataCache.getFileCache(file));
+      const stillMatched = compiled ? new Set(matchRules(text, compiled).map(tagKey)) : null;
+      const toAdd: string[] = [];
+      for (const tag of approvedTags) {
+        const key = tagKey(tag);
+        if (!seen.has(key) && (!stillMatched || stillMatched.has(key))) {
+          seen.add(key);
+          toAdd.push(tag);
+        }
       }
+      return toAdd;
+    };
+
+    if (placement === 'inline') {
+      let added = 0;
+      await this.app.vault.process(file, (text) => {
+        const toAdd = getTagsToAdd(text);
+        if (!toAdd.length) return text;
+        const newline = text.includes('\r\n') ? '\r\n' : '\n';
+        const separator = text && !text.endsWith('\n') ? newline : '';
+        added = toAdd.length;
+        return text + separator + toAdd.map((tag) => '#' + tag).join(' ') + newline;
+      });
+      return added;
     }
+
+    const toAdd = getTagsToAdd(await this.app.vault.read(file));
     if (!toAdd.length) return 0;
     let added = 0;
     await this.app.fileManager.processFrontMatter(file, (frontmatter: unknown) => {

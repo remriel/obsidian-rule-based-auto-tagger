@@ -1,32 +1,48 @@
-# Progress — Rule-Based Auto-Tagger 1.0.2
+# Progress for Rule-Based Auto-Tagger 1.1.0
 
-**Objective:** Publish a new patch release with the settings fixes and verify GitHub assets and provenance.
+**Objective** Finish Iteration 3 with the repaired integration harness, LF sources, and a verified local release candidate.
 
-**Progress:** 100% — 1.0.2 is published and verified.
+**Progress** [########--] 80% toward a verified, publishable result. The scoped edits and operator native checks are complete. Post-edit build and harness execution and legacy settings verification remain open.
 
-## Checklist
+- [x] Reconcile the handoff with the source, version metadata, and tests.
+- [x] Repair the integration DOM fake and audit its remaining methods.
+- [x] Normalize touched text files to LF and document the unclosed fence limitation.
+- [x] Record the operator's build and native verification.
+- [x] Verify LF, version alignment, and harness syntax statically.
+- [ ] Rebuild from LF sources and run all npm checks in a working shell.
+- [ ] Verify the legacy settings renderer on Obsidian 1.5.
 
-- [x] Search every available Miyo folder and read the relevant Avernus context.
-- [x] Confirm the existing settings fixes on `main` and review the release process.
-- [x] Align `package.json`, `package-lock.json`, `manifest.json`, and `versions.json` at 1.0.2.
-- [x] Run metadata validation and `git diff --check`.
-- [x] Commit and push release metadata to `main`.
-- [x] Push tag 1.0.2 and complete the release workflow.
-- [x] Download all three assets and match their SHA-256 values to GitHub metadata.
-- [x] Verify `main.js` and `styles.css` GitHub artifact attestations for tag 1.0.2.
-- [x] Update project notes, Avernus handoff/session log, and the thread archive.
+## Operator verification, 2026-11-24
 
-## Implementation and verification
+- Iteration 1: `npm install`, `npm run typecheck`, `npm run build`, and `npm test` all exited 0. The build produced a 24,866-byte `main.js`.
+- Iteration 2: the same four commands exited 0. `npm run test:integration` exited 1 with `TypeError: content.addClass is not a function` in `BatchPreviewModal.onOpen`. The fake element lacked `addClass`, so the integration suite did not reach its batch assertions.
 
-The source settings fixes are in commit `29f2715`; release tag 1.0.2 points to `42d3359`. GitHub Actions run [45263574433](https://github.com/remriel/obsidian-rule-based-auto-tagger/actions/runs/45263574433) passed install, typecheck, build, version checks, attestations, and publication. All three downloaded asset hashes match the release metadata. Attestation provenance names tag 1.0.2 and commit `42d3359`.
+### Native Obsidian 1.15.1
 
-Prior local checks on the source-fix commit report smoke tests, typecheck, build, targeted lint, and diff checks passing. Native Obsidian settings and the separate automatic review scan remain unverified. No personal vault changed.
+The operator used CDP with a separate profile and the disposable vault at `C:\Drive\obsidian-test-vaults\auto-tagger-test`.
 
-## Current blockers
+| Check | Operator result |
+| --- | --- |
+| Tag current note, frontmatter | PASS. `no-frontmatter.md` gained tags `[ai, ml]`. |
+| Tag current note, inline | PASS. `inline-only.md` gained only `#ml` and the cache indexed both `#AI` and `#ml`. |
+| Tag vault, inline preview | PASS. Exactly seven notes and inline placement text appeared. Cancel kept all eleven file hashes identical. Apply tagged all seven correctly. |
+| Tag current folder | PASS. The Notes preview listed only `Notes/matching.md` with `#ai #ml`. |
+| Suggest tags | PASS. The modal showed `#orchid` twice and `#daffodil` once. Add selected appended both tags, and both were indexed. |
+| Declarative settings dropdown | PASS. It showed saved `inline`. Changing it to frontmatter updated live settings and persisted `"tagPlacement": "frontmatter"` to `data.json`. |
+| CRLF | PASS. The result was byte-exact, `"machine learning\r\n#ai #ml\r\n"`. |
+| Unclosed code fence | Confirmed limitation. The appended line was code text. The cache showed one code section and no tags. |
+| Legacy settings renderer | Unverified on Obsidian 1.5. |
 
-None for the requested release.
+With a Settings window open, modal rendering follows the active window in Obsidian 1.15.1.
 
-## Ordered follow-up
+## Iteration 3 implementation and verification
 
-1. Check the settings flows in native Obsidian on both supported settings API generations.
-2. Check the external automatic review scanner when it becomes accessible.
+The harness now implements the no-op `addClass`. It already had `empty`, `createEl`, `createDiv`, `createSpan`, and `addEventListener`. The plugin does not call `setAttr`. The package, lockfile, manifest, and versions map retain 1.1.0 and the manifest minimum remains 1.5.0.
+
+`npm install`, Git status, and Git diff failed at startup with `0xC0000142` (signed exit `-1073741502`). Typecheck, build, smoke, and integration were left unrun under the fail-fast instruction. The existing 24,866-byte bundle is from the operator's earlier build. The operator supplied the native results above. The session archive is pending because the designated Avernus drive returned access denied.
+
+## Ordered next steps
+
+1. From the working operator shell, inspect Git status and diff. Run `npm install`, `npm run typecheck`, `npm run build`, `npm test`, and `npm run test:integration` in that order. Capture each exit code. For SSH, use a batch file to capture the individual command statuses.
+2. Confirm the rebuilt bundle and the passing file-backed assertions. If an assertion fails, diagnose the harness or plugin before release.
+3. On an isolated Obsidian 1.5 profile with disposable files, verify that the legacy placement dropdown renders, persists changes, and uses the selected placement.

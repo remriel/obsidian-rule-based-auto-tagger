@@ -4,6 +4,8 @@ A free, local Obsidian plugin for a controlled tag taxonomy. It uses keyword and
 
 ## Install
 
+Install the current published release from the [Obsidian community directory](https://obsidian.md/plugins?id=rule-based-auto-tagger), or install a local build manually.
+
 1. Obtain manifest.json, main.js, and styles.css from this folder.
 2. Create a folder named rule-based-auto-tagger inside your vault at .obsidian/plugins/.
 3. Copy those three files into that folder.
@@ -32,13 +34,15 @@ Open the command palette and choose:
 - Tag current folder: preview the active note folder and all its subfolders, then apply or cancel. If the note is at the vault root, this covers the vault.
 - Suggest tags for current note: review locally counted keywords, choose suggestions, and add the selected tags.
 
-New tags are written to the frontmatter tags property. Existing tags in frontmatter or inline are checked case-insensitively, so a matching existing tag is not added again. Inline text is not rewritten. During a batch, each note is checked again before writing, and only tags shown in its preview can be added. Notes with malformed or unsupported frontmatter are skipped. Reports show skipped or failed counts; details appear in the developer console.
+In **Where to put new tags**, choose **Frontmatter** (the default) to add tags to the frontmatter `tags` property, or **Inline, at end of note** to append a single line such as `#ai #ml`. Inline placement preserves the frontmatter and existing body text. Both placements check frontmatter, inline, and cached tags for duplicates case-insensitively. Batch previews show the placement before you apply. During a batch, each note is checked again before writing, and only tags shown in its preview can be added. Notes with malformed or unsupported frontmatter are skipped. Reports show skipped or failed counts; details appear in the developer console.
+
+If a note ends inside an unclosed code fence, appended inline tags are treated as code. Obsidian indexes them once the fence is closed above the tag line.
 
 Suggestions are ranked by word count, exclude common English stop words and existing tags, and ignore fenced code blocks. They are suggestions, not a controlled taxonomy: inspect them before adding them.
 
 ## Privacy and scope
 
-All matching happens locally inside Obsidian. The plugin makes no network calls. Tag vault and Tag current folder enumerate Markdown paths in the chosen scope and read those notes to build a preview; no changes happen until you apply it. It does not automatically modify notes on save; commands run only when invoked. This is an independent plugin and has not been submitted to the Obsidian community plugin directory.
+All matching happens locally inside Obsidian. The plugin makes no network calls. Tag vault and Tag current folder enumerate Markdown paths in the chosen scope and read those notes to build a preview; no changes happen until you apply it. It does not automatically modify notes on save; commands run only when invoked.
 
 ## Background
 

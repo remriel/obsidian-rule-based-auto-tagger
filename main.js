@@ -2,6 +2,12 @@
 
 // main.ts
 var import_obsidian = require("obsidian");
+var TAG_PLACEMENT_NAME = "Where to put new tags";
+var TAG_PLACEMENT_DESCRIPTION = "Existing frontmatter and inline tags both count as duplicates in either mode.";
+var TAG_PLACEMENT_OPTIONS = {
+  frontmatter: "Frontmatter",
+  inline: "Inline, at end of note"
+};
 var STARTER_RULES = [
   { pattern: "machine learning", mode: "keyword", ignoreCase: true, tags: "ai, ml" },
   { pattern: "artificial intelligence", mode: "keyword", ignoreCase: true, tags: "ai" },
@@ -159,6 +165,7 @@ var BatchPreviewModal = class extends import_obsidian.Modal {
     this.compiled = compiled;
     this.label = label;
     this.skipped = skipped;
+    this.placement = plugin.settings.tagPlacement;
   }
   onOpen() {
     const content = this.contentEl;
@@ -167,6 +174,9 @@ var BatchPreviewModal = class extends import_obsidian.Modal {
     content.createEl("h2", { text: "Preview tags: " + this.label });
     content.createEl("p", {
       text: this.changes.length + " note(s) would receive these tags. Nothing has been changed yet."
+    });
+    content.createEl("p", {
+      text: this.placement === "inline" ? "These tags will be added as inline tags at the end of each note." : "These tags will be added to frontmatter."
     });
     if (this.skipped.length) {
       content.createEl("p", { text: this.skipped.length + " note(s) could not be read or had unsupported frontmatter." });
@@ -184,7 +194,7 @@ var BatchPreviewModal = class extends import_obsidian.Modal {
     apply.addEventListener("click", () => {
       apply.disabled = true;
       this.close();
-      void this.plugin.applyPreview(this.changes, this.compiled, this.skipped.length);
+      void this.plugin.applyPreview(this.changes, this.compiled, this.skipped.length, this.placement);
     });
   }
   onClose() {
@@ -229,11 +239,19 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
     this.plugin = plugin;
   }
   getControlValue(key) {
+    if (key === "tagPlacement") return this.plugin.settings.tagPlacement;
     const setting = getRuleSetting(this.plugin.settings, key);
     if (!setting) return void 0;
     return setting.rule[setting.property];
   }
   async setControlValue(key, value) {
+    if (key === "tagPlacement") {
+      if (value === "frontmatter" || value === "inline") {
+        this.plugin.settings.tagPlacement = value;
+        await this.plugin.saveSettings();
+      }
+      return;
+    }
     const setting = getRuleSetting(this.plugin.settings, key);
     if (!setting) return;
     switch (setting.property) {
@@ -260,6 +278,16 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
       {
         name: "Rule behavior",
         desc: "Rules scan note bodies. Keywords match whole words or phrases. Regular expressions use JavaScript syntax without slash delimiters."
+      },
+      {
+        name: TAG_PLACEMENT_NAME,
+        desc: TAG_PLACEMENT_DESCRIPTION,
+        control: {
+          type: "dropdown",
+          key: "tagPlacement",
+          defaultValue: "frontmatter",
+          options: TAG_PLACEMENT_OPTIONS
+        }
       },
       {
         type: "list",
@@ -356,6 +384,7 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
     container.createEl("p", {
       text: "Separate tags with commas or spaces. Tags may use letters, numbers, underscores, hyphens and nested slashes. Invalid rules are skipped."
     });
+    new import_obsidian.Setting(container).setName(TAG_PLACEMENT_NAME).setDesc(TAG_PLACEMENT_DESCRIPTION).addDropdown((dropdown) => dropdown.addOptions(TAG_PLACEMENT_OPTIONS).setValue(this.plugin.settings.tagPlacement).onChange((value) => this.setControlValue("tagPlacement", value)));
     this.plugin.settings.rules.forEach((rule, index) => {
       const row = container.createDiv({ cls: "auto-tagger-rule" });
       new import_obsidian.Setting(row).setName("Rule " + (index + 1)).addButton((button) => button.setButtonText("Remove").onClick(async () => {
@@ -398,10 +427,14 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
     const stored = await this.loadData();
     const rawRules = isRecord(stored) && Array.isArray(stored.rules) ? stored.rules : null;
     const source = rawRules ? rawRules.map(normalizeRule).filter((rule) => rule !== null) : STARTER_RULES;
+    const storedPlacement = isRecord(stored) ? stored.tagPlacement : void 0;
     this.settings = {
-      rules: source
+      rules: source,
+      tagPlacement: storedPlacement === "inline" ? "inline" : "frontmatter"
     };
-    if (!rawRules || source.length !== rawRules.length) await this.saveSettings();
+    if (!rawRules || source.length !== rawRules.length || storedPlacement !== this.settings.tagPlacement) {
+      await this.saveSettings();
+    }
     this.addSettingTab(new AutoTaggerSettingsTab(this.app, this));
     this.addCommand({
       id: "tag-current-note",
@@ -448,7 +481,8 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
   }
   async saveSettings() {
     const snapshot = {
-      rules: this.settings.rules.map((rule) => ({ ...rule }))
+      rules: this.settings.rules.map((rule) => ({ ...rule })),
+      tagPlacement: this.settings.tagPlacement
     };
     this.saveQueue = this.saveQueue.then(() => this.saveData(snapshot));
     return this.saveQueue;
@@ -495,13 +529,13 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
     }
     new BatchPreviewModal(this, changes, compiled, label, skipped).open();
   }
-  async applyPreview(changes, compiled, previouslySkipped) {
+  async applyPreview(changes, compiled, previouslySkipped, placement = this.settings.tagPlacement) {
     let notes = 0;
     let tags = 0;
     let failed = previouslySkipped;
     for (const change of changes) {
       try {
-        const added = await this.writeTags(change.file, change.tags, compiled);
+        const added = await this.writeTags(change.file, change.tags, compiled, placement);
         if (added) notes++;
         tags += added;
       } catch (error) {
@@ -511,20 +545,34 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
     }
     new import_obsidian.Notice("Added " + tags + " tag(s) to " + notes + " note(s)." + (failed ? " Skipped or failed: " + failed + "." : ""));
   }
-  async writeTags(file, approvedTags, compiled) {
+  async writeTags(file, approvedTags, compiled, placement = this.settings.tagPlacement) {
     if (!approvedTags.length) return 0;
-    const text = await this.app.vault.read(file);
-    const existing = collectExistingTags(text, this.app.metadataCache.getFileCache(file));
-    const stillMatched = compiled ? new Set(matchRules(text, compiled).map(tagKey)) : null;
-    const seen = new Set(existing);
-    const toAdd = [];
-    for (const tag of approvedTags) {
-      const key = tagKey(tag);
-      if (!seen.has(key) && (!stillMatched || stillMatched.has(key))) {
-        seen.add(key);
-        toAdd.push(tag);
+    const getTagsToAdd = (text) => {
+      const seen = collectExistingTags(text, this.app.metadataCache.getFileCache(file));
+      const stillMatched = compiled ? new Set(matchRules(text, compiled).map(tagKey)) : null;
+      const toAdd2 = [];
+      for (const tag of approvedTags) {
+        const key = tagKey(tag);
+        if (!seen.has(key) && (!stillMatched || stillMatched.has(key))) {
+          seen.add(key);
+          toAdd2.push(tag);
+        }
       }
+      return toAdd2;
+    };
+    if (placement === "inline") {
+      let added2 = 0;
+      await this.app.vault.process(file, (text) => {
+        const toAdd2 = getTagsToAdd(text);
+        if (!toAdd2.length) return text;
+        const newline = text.includes("\r\n") ? "\r\n" : "\n";
+        const separator = text && !text.endsWith("\n") ? newline : "";
+        added2 = toAdd2.length;
+        return text + separator + toAdd2.map((tag) => "#" + tag).join(" ") + newline;
+      });
+      return added2;
     }
+    const toAdd = getTagsToAdd(await this.app.vault.read(file));
     if (!toAdd.length) return 0;
     let added = 0;
     await this.app.fileManager.processFrontMatter(file, (frontmatter) => {

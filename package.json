@@ -1,12 +1,13 @@
 {
   "name": "rule-based-auto-tagger",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "private": true,
   "description": "A local rule-based auto-tagger for Obsidian.",
   "scripts": {
     "build": "node esbuild.config.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/smoke.cjs"
+    "test": "node tests/smoke.cjs",
+    "test:integration": "node tests/integration.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

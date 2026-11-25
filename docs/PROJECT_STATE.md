@@ -1,38 +1,32 @@
-# Project state — Rule-Based Auto-Tagger 1.0.2
+# Project state for Rule-Based Auto-Tagger
 
-## Active worklog
+## Active worklog, 2026-11-24
 
-**Goal:** Publish a patch release containing the latest settings fixes and verify its release assets and attestations.
+- Goal: finalize the local 1.1.0 release candidate in Iteration 3. Owner: primary agent for harness and documentation, operator for external-shell verification and any subsequent publication.
+- Scope: no real vaults, native app launch, version bump, compatibility-floor change, or publication. The published baseline is 1.0.2 per the operator's community review.
+- Decision: add the modal's missing `addClass` API to the integration fake and retain plugin behavior. The operator isolated the previous integration crash to the harness and verified the real modal and commands in Obsidian 1.15.1.
+- Decision: document the unclosed code fence behavior. Inline writing appends after the code text, so Obsidian indexes the tags once the fence closes above the tag line. The native cache showed a single code section and no tags in the original fixture.
 
-**Owner:** Primary agent only. The user prohibits subagents.
+## Architecture and evidence
 
-**Status:** Complete. Public GitHub release [1.0.2](https://github.com/remriel/obsidian-rule-based-auto-tagger/releases/tag/1.0.2) was published on 2026-11-23 from tag commit `42d33598d1b5f61f24dc4eaf1b1692b309436f24`. Source fixes are in commit `29f2715decb839068ab02197ef07614ae9fce6f1`. GitHub Actions run [45263574433](https://github.com/remriel/obsidian-rule-based-auto-tagger/actions/runs/45263574433) passed. Release assets and attestations were verified.
+- `main.ts` owns rules, commands, modal previews, settings, and writes. esbuild bundles the plugin with Obsidian externalized. The release workflow is tag-triggered.
+- `onload` normalizes missing and invalid placement to frontmatter while preserving rules. The declarative and legacy settings renderers share placement choices and persistence.
+- `writeTags` serves all write paths. Frontmatter uses `processFrontMatter`. Inline uses `Vault.process` and rechecks against the updated text. Batch apply honors the previewed placement. Both paths deduplicate case-insensitively across existing tag locations.
+- `tests/smoke.cjs` covers migration and simulated note and preview behavior. `tests/integration.cjs` installs the bundle into a temporary vault and compares file bytes after commands and modal clicks. Its YAML adapter covers fixture scalar and flow-list tags. Cache lookups return null. Use native testing for Obsidian parsing, indexing, and settings rendering.
+- The integration DOM fake implements `empty`, `addClass`, `createEl`, `createDiv`, `createSpan`, and `addEventListener`. The plugin does not use `setAttr`.
 
-## Architecture and important decisions
+## Native test setup lessons
 
-- `main.ts` owns Obsidian commands, settings, rule matching, suggestions, frontmatter reads, and writes; esbuild generates `main.js` and externalizes Obsidian.
-- Rules persist a pattern, keyword/regex mode, case handling, and tags. Keyword rules match whole words or phrases. Batch changes are previewed and rechecked before writing. Added tags are deduplicated against frontmatter, inline, and cached tags.
-- Keep the `minAppVersion` support floor at 1.5.0. Obsidian 1.13+ uses searchable declarative rule settings; older supported versions retain the legacy renderer.
-- Commit `29f2715` handles rejected rule saves, guards the modern settings refresh with `requireApiVersion('1.13.0')`, and routes legacy refreshes through a private renderer. This preserves both settings APIs.
-- Release workflow `.github/workflows/release.yml` runs on version tags, installs dependencies, typechecks/builds, validates version metadata, attests `main.js` and `styles.css`, then publishes `main.js`, `manifest.json`, and `styles.css`.
-- Repository visibility is public. Do not change it.
+- A fresh Obsidian profile defaults to safe mode on. Community plugins load after enabling them with `app.plugins.setEnable(true)`.
+- With a custom `--user-data-dir`, the vault-path argument and `obsidian.json` with `open:true` failed to open the vault automatically. The operator opened it from the starter page using `ipcRenderer.sendSync("vault-open", <path>, false)`.
+- Obsidian 1.15.1 renders modals in the active window when the Settings window is open. Account for this in CDP tests.
+- The legacy Obsidian 1.5 renderer remains unverified. The full operator results are in [PROGRESS.md](PROGRESS.md).
 
-## Release verification
+## Environment and open work
 
-- `package.json`, `package-lock.json`, `manifest.json`, and `versions.json` align at 1.0.2; the supported Obsidian floor remains 1.5.0.
-- Actions run 45263574433 passed dependency install, typecheck, build, version validation, asset attestation, and GitHub release creation.
-- Downloaded asset SHA-256 values matched GitHub release metadata:
-  - `main.js`: `afe45e77e0bc22320d7f5334274076681662a72791bd6cb0877b17be1438526d`
-  - `manifest.json`: `90086b5d331dfe56970bccea7b57fc3f7880527f562225934bbd1c706f948acf`
-  - `styles.css`: `5ed2d5ba08cb9cf6a9fce8f7cc691a079c2eea54eff5a24180e7b1b95f699b67`
-- `gh attestation verify` succeeded for `main.js` and `styles.css`. The 1.0.2 provenance identifies workflow `.github/workflows/release.yml`, tag `1.0.2`, and source commit `42d33598d1b5f61f24dc4eaf1b1692b309436f24`. The same `styles.css` is also covered by its unchanged 1.0.1 attestation.
-- The source-fix commit's prior handoff reports smoke tests, typecheck, build, targeted lint, and diff checks passing. This release workflow itself runs typecheck/build but not the smoke suite.
-- GitHub emitted a non-blocking Node.js 20 deprecation annotation for the pinned checkout/setup-node actions; the run succeeded under Node.js 24. Update the action pins before a future release.
-
-## Limits and unresolved work
-
-Native Obsidian settings interaction on 1.5 and 1.13+ remains unverified. The separate automatic review scanner was not available through connected GitHub tools, so its rescan result remains unknown. No personal vault was modified.
+- CMD built-ins and Python worked. PowerShell, Node REPL, npm, and Git hit Windows startup error `0xC0000142`. File edits and static verification used Python and V8 syntax parsing. The earlier built bundle remains in place pending an external-shell rebuild.
+- Miyo was blocked by the approval policy. The local Avernus fallback path was missing and the designated G: path returned access denied. The session archive is pending.
 
 ## RESUME HERE
 
-No release work remains. The next useful checks are the settings flows in native Obsidian and the scanner result when accessible. If more changes are made, start a new patch from the current main branch and keep version metadata aligned.
+Keep 1.1.0 and the 1.5.0 support floor. Run the npm verification sequence in [PROGRESS.md](PROGRESS.md) to regenerate `main.js` from LF sources and run the repaired harness. Verify the legacy renderer in a separate disposable Obsidian 1.5 environment. Publication belongs to the operator.

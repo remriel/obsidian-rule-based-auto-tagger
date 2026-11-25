@@ -28,10 +28,10 @@ class Modal {
 }
 class Plugin {
   constructor(app) { this.app = app; this.commands = []; }
-  async loadData() { return null; }
+  async loadData() { return this.stored ?? null; }
   async saveData(data) { this.saved = data; }
   addCommand(command) { this.commands.push(command); }
-  addSettingTab() {}
+  addSettingTab(tab) { this.settingTab = tab; }
 }
 class Notice { constructor(message) { this.message = message; } }
 
@@ -88,15 +88,41 @@ async function run() {
   assert.throws(() => core.splitFrontmatter('---\ntags: broken'), /Unclosed/);
 
   let writes = 0;
+  let inlineWrites = 0;
   let text = 'MACHINE LEARNING #AI';
   const frontmatter = { tags: ['old'] };
   const file = { path: 'Notes/Test.md', parent: { path: 'Notes' } };
   const app = {
-    vault: { read: async () => text, getMarkdownFiles: () => [file] },
+    vault: {
+      read: async () => text,
+      getMarkdownFiles: () => [file],
+      process: async (target, update) => {
+        assert.equal(target, file);
+        const updated = update(text);
+        if (updated !== text) inlineWrites++;
+        text = updated;
+        return text;
+      },
+    },
     metadataCache: { getFileCache: () => null },
     fileManager: { processFrontMatter: async (target, callback) => { writes++; callback(frontmatter); } },
     workspace: { getActiveFile: () => file },
   };
+  const savedRules = [{ pattern: 'machine learning', mode: 'keyword', ignoreCase: true, tags: 'ai, ml' }];
+  for (const [stored, expected] of [
+    [{ rules: savedRules }, 'frontmatter'],
+    [{ rules: savedRules, tagPlacement: 'invalid' }, 'frontmatter'],
+    [{ rules: savedRules, tagPlacement: 'inline' }, 'inline'],
+  ]) {
+    const migrated = new AutoTagger(app);
+    migrated.stored = stored;
+    await migrated.onload();
+    assert.equal(migrated.settings.tagPlacement, expected);
+    assert.deepEqual(migrated.settings.rules, savedRules);
+    await migrated.saveSettings();
+    assert.equal(migrated.saved.tagPlacement, expected);
+  }
+
   const plugin = new AutoTagger(app);
   await plugin.onload();
   assert.deepEqual(plugin.commands.map((command) => command.name), [
@@ -110,6 +136,7 @@ async function run() {
   const displayed = flatten(lastModal.contentEl).join('|');
   assert.match(displayed, /Notes\/Test\.md/);
   assert.match(displayed, /#ml/);
+  assert.match(displayed, /added to frontmatter/);
   assert.doesNotMatch(displayed, /#ai/);
   find(lastModal.contentEl, 'Cancel').handlers.click();
   assert.equal(writes, 0, 'Cancel must not write');
@@ -126,6 +153,44 @@ async function run() {
   text = 'The matching phrase is gone.';
   assert.equal(await plugin.writeTags(file, ['ai', 'ml'], rules.compiled), 0);
   assert.equal(writes, 1, 'A stale preview must not add tags');
+
+  await plugin.settingTab.setControlValue('tagPlacement', 'inline');
+  assert.equal(plugin.settingTab.getControlValue('tagPlacement'), 'inline');
+  assert.equal(plugin.saved.tagPlacement, 'inline');
+
+  for (const [original, expected, count] of [
+    ['MACHINE LEARNING\n', 'MACHINE LEARNING\n#ai #ml\n', 2],
+    ['MACHINE LEARNING #AI\n', 'MACHINE LEARNING #AI\n#ml\n', 1],
+    ['---\ntags: [ai]\n---\nMACHINE LEARNING\n', '---\ntags: [ai]\n---\nMACHINE LEARNING\n#ml\n', 1],
+    ['MACHINE LEARNING', 'MACHINE LEARNING\n#ai #ml\n', 2],
+    ['MACHINE LEARNING\r\n', 'MACHINE LEARNING\r\n#ai #ml\r\n', 2],
+  ]) {
+    text = original;
+    assert.equal(await plugin.writeTags(file, ['ai', 'ml'], rules.compiled), count);
+    assert.equal(text, expected);
+    assert.equal(await plugin.writeTags(file, ['ai', 'ml'], rules.compiled), 0, 'Repeated tagging must be a no-op');
+  }
+  assert.equal(inlineWrites, 5);
+  assert.equal(writes, 1, 'Inline tagging must not call processFrontMatter');
+  assert.deepEqual(frontmatter.tags, ['old', 'ml']);
+
+  text = 'MACHINE LEARNING';
+  await plugin.previewBatch([file], 'Notes');
+  assert.match(flatten(lastModal.contentEl).join('|'), /inline tags at the end/);
+  assert.equal(text, 'MACHINE LEARNING');
+  text = 'The matching phrase is gone.';
+  find(lastModal.contentEl, 'Apply tags').handlers.click();
+  await applying;
+  assert.equal(text, 'The matching phrase is gone.');
+  assert.equal(inlineWrites, 5, 'A stale inline preview must not add tags');
+
+  text = 'MACHINE LEARNING';
+  await plugin.previewBatch([file], 'Notes');
+  await plugin.settingTab.setControlValue('tagPlacement', 'frontmatter');
+  find(lastModal.contentEl, 'Apply tags').handlers.click();
+  await applying;
+  assert.equal(text, 'MACHINE LEARNING\n#ai #ml\n', 'Apply must honor the previewed placement');
+  assert.equal(writes, 1);
 
   console.log('Smoke checks passed.');
 }
