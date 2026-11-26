@@ -47,3 +47,9 @@ I assumed MIT licensing is appropriate because the user's other Obsidian plugin 
 1. **Least confident:** How the new controls render on Obsidian 1.5. I’d test them in a disposable vault.
 2. **Biggest gap:** Publishing on GitHub leaves the community review and update flow to verify. I’d check that Obsidian offers 1.2.0 through its updater.
 3. **Key assumption:** I chose a minor release because the settings add functionality while preserving existing defaults. If the project uses a different versioning convention, I’d apply it to the next release.
+
+## 1.3.0 ribbon and startup release
+
+1. **Least confident:** Ribbon placement and startup timing in native Obsidian. I’d verify both in a disposable vault.
+2. **Biggest gap:** Startup tagging can change many notes on the first run. I’d use **Tag vault** to preview the rules and exclusions before enabling it.
+3. **Key assumption:** Startup tagging should cover the vault. If you meant only the restored active note, I’d add a scope setting.

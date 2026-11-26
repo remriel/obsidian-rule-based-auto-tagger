@@ -1,5 +1,20 @@
 # Progress for Rule-Based Auto-Tagger
 
+## 1.3.0 release
+
+**Objective** Add a ribbon shortcut and opt-in startup tagging, then publish.
+
+**Progress** [##########] 100% of requested publication.
+
+- [x] Add and test the ribbon, the startup setting, and the existing command paths.
+- [x] Pass typecheck, build, smoke, and file-backed integration.
+- [x] Publish [1.3.0](https://github.com/remriel/obsidian-rule-based-auto-tagger/releases/tag/1.3.0), verify checksums for all three assets, and verify both attestations against the release tag.
+- [ ] Verify native rendering and startup timing. No personal vault changes were made.
+
+Next, load 1.3.0 in a disposable vault, test the ribbon with preview on and off, then enable startup tagging and reopen the vault. Verify the exclusion and placement settings. Then check the Obsidian community update flow.
+
+## 1.2.0 release
+
 **Objective** Make tagging behavior configurable and explain what each command does.
 
 **Progress** [##########] 100% of requested publication. Native UI verification remains a follow-up.

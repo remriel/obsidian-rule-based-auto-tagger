@@ -1,6 +1,14 @@
 # Project state for Rule-Based Auto-Tagger
 
-## Active worklog, 2026-11-26
+## Active worklog, 1.3.0
+
+- Owner: primary agent. Added the left ribbon action, opt-in startup tagging, version metadata, and verification.
+- Ribbon and command call `tagCurrent` for Markdown notes and share its preview and placement behavior.
+- `autoTagOnStartup` defaults false. If enabled on load, `Workspace.onLayoutReady` triggers one vault pass. The scan uses batch exclusions, snapshots placement, and applies via the same recheck and deduplication path as manual batch tagging. It writes without preview.
+- Release 1.3.0 was published from `840319d`. [Release workflow](https://github.com/remriel/obsidian-rule-based-auto-tagger/actions/runs/45882775396) succeeded. All three SHA-256 checksums and both artifact attestations verified.
+- Typecheck, build, smoke, and file-backed integration pass. Native startup timing and ribbon rendering remain unverified.
+
+## Previous worklog, 2026-11-26
 
 - Goal: make tagging options configurable and understandable. Owner: primary agent.
 - The checkout was fast-forwarded to `cb3a12e` and tag `1.1.0` before editing. The earlier release candidate notes below describe historical work.
@@ -39,4 +47,4 @@
 
 ## RESUME HERE
 
-Start from the updated main source and built bundle. Check the new settings in a disposable vault on modern and legacy Obsidian versions, following the ordered checks in PROGRESS.md. Check that the community updater offers the already published 1.2.0. Keep the 1.5.0 support floor until there is a decision to change it.
+1.3.0 is published. Follow PROGRESS.md to verify the ribbon and startup behavior in a disposable vault, then check the community update flow. The support floor remains 1.5.0.
