@@ -3,6 +3,7 @@
 // main.ts
 var import_obsidian = require("obsidian");
 var BEHAVIOR_DEFAULTS = {
+  autoTagOnStartup: false,
   previewCurrentNote: false,
   includeSubfolders: true,
   excludedFolders: "",
@@ -10,6 +11,11 @@ var BEHAVIOR_DEFAULTS = {
   minimumOccurrences: 1
 };
 var BEHAVIOR_OPTIONS = [
+  {
+    name: "Auto-tag vault on startup",
+    desc: "On the next vault startup, apply matching rules across the vault without asking for confirmation. Uses your tag placement and batch folder exclusions.",
+    control: { type: "toggle", key: "autoTagOnStartup", defaultValue: BEHAVIOR_DEFAULTS.autoTagOnStartup }
+  },
   {
     name: "Preview current note before tagging",
     desc: "Review the proposed tags before Tag current note writes them. Batch commands always show a preview.",
@@ -519,12 +525,17 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
       await this.saveSettings();
     }
     this.addSettingTab(new AutoTaggerSettingsTab(this.app, this));
+    this.addRibbonIcon("tags", "Tag current note", () => {
+      const file = this.app.workspace.getActiveFile();
+      if (file?.extension === "md") return this.tagCurrent(file);
+      new import_obsidian.Notice("Open a Markdown note to tag it.");
+    });
     this.addCommand({
       id: "tag-current-note",
       name: "Tag current note",
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
-        if (!file) return false;
+        if (file?.extension !== "md") return false;
         if (!checking) void this.tagCurrent(file);
         return true;
       }
@@ -563,6 +574,22 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
         return true;
       }
     });
+    if (this.settings.autoTagOnStartup) {
+      let active = true;
+      this.register(() => {
+        active = false;
+      });
+      this.app.workspace.onLayoutReady(() => {
+        if (active && this.settings.autoTagOnStartup) return this.autoTagVault();
+      });
+    }
+  }
+  async autoTagVault() {
+    const placement = this.settings.tagPlacement;
+    const { changes, compiled, skipped } = await this.scanBatch(this.app.vault.getMarkdownFiles(), true);
+    if (changes.length || skipped.length) {
+      await this.applyPreview(changes, compiled, skipped.length, placement);
+    }
   }
   async saveSettings() {
     const snapshot = {
@@ -601,6 +628,14 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
     }
   }
   async previewBatch(files, label, applyFolderExclusions = true) {
+    const { changes, compiled, skipped } = await this.scanBatch(files, applyFolderExclusions);
+    if (!changes.length) {
+      new import_obsidian.Notice("No new tags found." + (skipped.length ? " Skipped " + skipped.length + " note(s)." : ""));
+      return;
+    }
+    new BatchPreviewModal(this, changes, compiled, label, skipped).open();
+  }
+  async scanBatch(files, applyFolderExclusions) {
     const excluded = applyFolderExclusions ? this.settings.excludedFolders.split(/\r?\n/).map((path) => path.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "")).filter(Boolean) : [];
     const compiled = this.rulesForRun();
     const changes = [];
@@ -615,11 +650,7 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
         console.error("Auto-Tagger skipped " + file.path, error);
       }
     }
-    if (!changes.length) {
-      new import_obsidian.Notice("No new tags found." + (skipped.length ? " Skipped " + skipped.length + " note(s)." : ""));
-      return;
-    }
-    new BatchPreviewModal(this, changes, compiled, label, skipped).open();
+    return { changes, compiled, skipped };
   }
   async applyPreview(changes, compiled, previouslySkipped, placement = this.settings.tagPlacement) {
     let notes = 0;

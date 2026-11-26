@@ -20,6 +20,7 @@ declare const module: { exports: unknown };
 type TagRule = { pattern: string; mode: 'keyword' | 'regex'; ignoreCase: boolean; tags: string };
 type TagPlacement = 'frontmatter' | 'inline';
 const BEHAVIOR_DEFAULTS = {
+  autoTagOnStartup: false,
   previewCurrentNote: false,
   includeSubfolders: true,
   excludedFolders: '',
@@ -33,12 +34,17 @@ type BehaviorOption = {
   name: string;
   desc: string;
   control:
-    | { type: 'toggle'; key: 'previewCurrentNote' | 'includeSubfolders'; defaultValue: boolean }
+    | { type: 'toggle'; key: 'autoTagOnStartup' | 'previewCurrentNote' | 'includeSubfolders'; defaultValue: boolean }
     | { type: 'textarea'; key: 'excludedFolders'; defaultValue: string; placeholder: string }
     | { type: 'slider'; key: 'suggestionLimit' | 'minimumOccurrences'; defaultValue: number; min: number; max: number; step: number };
 };
 
 const BEHAVIOR_OPTIONS: BehaviorOption[] = [
+  {
+    name: 'Auto-tag vault on startup',
+    desc: 'On the next vault startup, apply matching rules across the vault without asking for confirmation. Uses your tag placement and batch folder exclusions.',
+    control: { type: 'toggle', key: 'autoTagOnStartup', defaultValue: BEHAVIOR_DEFAULTS.autoTagOnStartup },
+  },
   {
     name: 'Preview current note before tagging',
     desc: 'Review the proposed tags before Tag current note writes them. Batch commands always show a preview.',
@@ -658,12 +664,17 @@ class RuleBasedAutoTagger extends Plugin {
       await this.saveSettings();
     }
     this.addSettingTab(new AutoTaggerSettingsTab(this.app, this));
+    this.addRibbonIcon('tags', 'Tag current note', () => {
+      const file = this.app.workspace.getActiveFile();
+      if (file?.extension === 'md') return this.tagCurrent(file);
+      new Notice('Open a Markdown note to tag it.');
+    });
     this.addCommand({
       id: 'tag-current-note',
       name: 'Tag current note',
       checkCallback: (checking: boolean) => {
         const file = this.app.workspace.getActiveFile();
-        if (!file) return false;
+        if (file?.extension !== 'md') return false;
         if (!checking) void this.tagCurrent(file);
         return true;
       },
@@ -701,6 +712,21 @@ class RuleBasedAutoTagger extends Plugin {
         return true;
       },
     });
+    if (this.settings.autoTagOnStartup) {
+      let active = true;
+      this.register(() => { active = false; });
+      this.app.workspace.onLayoutReady(() => {
+        if (active && this.settings.autoTagOnStartup) return this.autoTagVault();
+      });
+    }
+  }
+
+  private async autoTagVault(): Promise<void> {
+    const placement = this.settings.tagPlacement;
+    const { changes, compiled, skipped } = await this.scanBatch(this.app.vault.getMarkdownFiles(), true);
+    if (changes.length || skipped.length) {
+      await this.applyPreview(changes, compiled, skipped.length, placement);
+    }
   }
 
   async saveSettings(): Promise<void> {
@@ -744,6 +770,15 @@ class RuleBasedAutoTagger extends Plugin {
   }
 
   async previewBatch(files: TFile[], label: string, applyFolderExclusions = true): Promise<void> {
+    const { changes, compiled, skipped } = await this.scanBatch(files, applyFolderExclusions);
+    if (!changes.length) {
+      new Notice('No new tags found.' + (skipped.length ? ' Skipped ' + skipped.length + ' note(s).' : ''));
+      return;
+    }
+    new BatchPreviewModal(this, changes, compiled, label, skipped).open();
+  }
+
+  private async scanBatch(files: TFile[], applyFolderExclusions: boolean) {
     const excluded = applyFolderExclusions
       ? this.settings.excludedFolders.split(/\r?\n/)
         .map((path) => path.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
@@ -762,11 +797,7 @@ class RuleBasedAutoTagger extends Plugin {
         console.error('Auto-Tagger skipped ' + file.path, error);
       }
     }
-    if (!changes.length) {
-      new Notice('No new tags found.' + (skipped.length ? ' Skipped ' + skipped.length + ' note(s).' : ''));
-      return;
-    }
-    new BatchPreviewModal(this, changes, compiled, label, skipped).open();
+    return { changes, compiled, skipped };
   }
 
   async applyPreview(

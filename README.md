@@ -25,8 +25,9 @@ Open **Settings → Rule-Based Auto-Tagger**.
 | --- | --- | --- |
 | Where to put new tags | Write to the frontmatter `tags` property or append an inline tag line. | Frontmatter |
 | Preview current note before tagging | Ask for confirmation when you run **Tag current note**. Both batch commands always require confirmation. | Off |
+| Auto-tag vault on startup | Apply matching rules once when the vault finishes opening. Uses your tag placement and folder exclusions and writes without a preview. | Off |
 | Include subfolders | Include descendants when you run **Tag current folder**. At the vault root, turning this off scans root notes only. | On |
-| Exclude folders from batch tagging | Enter one case-sensitive, vault-relative path per line, such as `Templates` or `Work/Archive`. Both batch commands skip these folders and their descendants. | Empty |
+| Exclude folders from batch tagging | Enter one case-sensitive, vault-relative path per line, such as `Templates` or `Work/Archive`. Both batch commands and startup tagging skip these folders and their descendants. | Empty |
 | Maximum suggestions | Limit the number of keyword suggestions shown. | 10 |
 | Minimum keyword occurrences | Require each suggested word to occur at least this many times. | 1 |
 
@@ -42,7 +43,7 @@ Starter rules cover machine learning, artificial intelligence, AI, meeting, and 
 
 ## Commands
 
-Open the command palette and choose:
+Click the **Tag current note** icon in Obsidian’s left ribbon, or open the command palette and choose:
 
 - Tag current note: apply matching rules to the active Markdown note.
 - Tag vault: preview the proposed changes throughout the vault, then apply or cancel.
@@ -57,7 +58,7 @@ Suggestions are ranked by word count, exclude common English stop words and exis
 
 ## Privacy and scope
 
-All matching happens locally inside Obsidian. The plugin makes no network calls. Tag vault and Tag current folder enumerate Markdown paths in the chosen scope and read those notes to build a preview; no changes happen until you apply it. It does not automatically modify notes on save; commands run only when invoked.
+All matching happens locally inside Obsidian. The plugin makes no network calls. Tag vault and Tag current folder enumerate Markdown paths in the chosen scope and read those notes to build a preview; no changes happen until you apply it. Tagging runs on command unless you enable **Auto-tag vault on startup**. Saving a note does not trigger tagging.
 
 ## Background
 

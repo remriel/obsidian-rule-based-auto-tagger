@@ -30,6 +30,8 @@ class Plugin {
   constructor(app) { this.app = app; this.commands = []; }
   async loadData() { return this.stored ?? null; }
   async saveData(data) { this.saved = data; }
+  register(cleanup) { this.cleanup = cleanup; }
+  addRibbonIcon(icon, title, callback) { this.ribbon = { icon, title, callback }; }
   addCommand(command) { this.commands.push(command); }
   addSettingTab(tab) { this.settingTab = tab; }
 }
@@ -100,7 +102,9 @@ async function run() {
   let inlineWrites = 0;
   let text = 'MACHINE LEARNING #AI';
   const frontmatter = { tags: ['old'] };
-  const file = { path: 'Notes/Test.md', parent: { path: 'Notes' } };
+  const file = { extension: 'md', path: 'Notes/Test.md', parent: { path: 'Notes' } };
+  let activeFile = file;
+  let onReady;
   const app = {
     vault: {
       read: async () => text,
@@ -115,7 +119,7 @@ async function run() {
     },
     metadataCache: { getFileCache: () => null },
     fileManager: { processFrontMatter: async (target, callback) => { writes++; callback(frontmatter); } },
-    workspace: { getActiveFile: () => file },
+    workspace: { getActiveFile: () => activeFile, onLayoutReady: (callback) => { onReady = callback; } },
   };
   const savedRules = [{ pattern: 'machine learning', mode: 'keyword', ignoreCase: true, tags: 'ai, ml' }];
   for (const [stored, expected] of [
@@ -245,6 +249,31 @@ async function run() {
   assert.match(suggested, /#orchid/);
   assert.doesNotMatch(suggested, /#daffodil|#forest/);
   assert.deepEqual(core.suggestKeywords(text, null, 10, 2).map(({ tag }) => tag), ['orchid', 'daffodil']);
+
+  assert.equal(onReady, undefined, 'Startup tagging defaults to off');
+  assert.equal(reloaded.ribbon.title, 'Tag current note');
+  text = 'MACHINE LEARNING';
+  await reloaded.ribbon.callback();
+  assert.ok(flatten(lastModal.contentEl).includes(file.path));
+  assert.equal(writes, 1, 'Ribbon must honor the current-note preview setting');
+  const previousModal = lastModal;
+  activeFile = { path: 'image.png', extension: 'png' };
+  await reloaded.ribbon.callback();
+  assert.equal(lastModal, previousModal);
+
+  const startup = new AutoTagger(app);
+  startup.stored = { ...reloaded.saved, autoTagOnStartup: true, excludedFolders: 'Notes/Archive' };
+  const visited = [];
+  app.vault.getMarkdownFiles = () => [file, nested];
+  app.vault.read = async (target) => { visited.push(target.path); return text; };
+  frontmatter.tags = ['old'];
+  await startup.onload();
+  assert.equal(writes, 1, 'Startup must wait for the workspace layout');
+  await onReady();
+  assert.deepEqual(frontmatter.tags, ['old', 'ai', 'ml']);
+  assert.ok(visited.includes(file.path));
+  assert.ok(!visited.includes(nested.path));
+  assert.equal(lastModal, previousModal, 'Startup mode applies without opening a preview');
 
   console.log('Smoke checks passed.');
 }

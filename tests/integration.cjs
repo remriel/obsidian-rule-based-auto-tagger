@@ -65,6 +65,7 @@ function loadPlugin(app, artifact) {
       constructor() { this.app = app; this.commands = new Map(); }
       async loadData() { return this.saved ?? null; }
       async saveData(data) { this.saved = data; }
+      addRibbonIcon() {}
       addCommand(command) { this.commands.set(command.id, command); }
       addSettingTab(tab) { this.settingsTab = tab; }
     },
@@ -101,6 +102,7 @@ function loadPlugin(app, artifact) {
 async function exercise(root, artifact) {
   const files = Object.keys(fixtures).map(name => ({
     path: name,
+    extension: path.extname(name).slice(1),
     parent: { path: name.includes('/') ? path.posix.dirname(name) : '/' },
   }));
   const diskPath = file => path.join(root, file.path);
