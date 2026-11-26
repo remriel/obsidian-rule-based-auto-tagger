@@ -40,7 +40,16 @@ const obsidian = {
   Modal,
   Notice,
   PluginSettingTab: class {},
-  Setting: class {},
+  Setting: class {
+    constructor(container) { this.row = container.createDiv(); }
+    setName(text) { this.row.createSpan({ text }); return this; }
+    setDesc(text) { this.row.createSpan({ text }); return this; }
+    addToggle(configure) {
+      const toggle = { setValue: () => toggle, onChange: () => toggle };
+      configure(toggle);
+      return this;
+    }
+  },
   getAllTags: (cache) => cache.allTags || [],
   parseYaml: (yaml) => {
     if (!yaml.trim()) return null;
@@ -191,6 +200,51 @@ async function run() {
   await applying;
   assert.equal(text, 'MACHINE LEARNING\n#ai #ml\n', 'Apply must honor the previewed placement');
   assert.equal(writes, 1);
+
+  const nested = { path: 'Notes/Archive/Nested.md' };
+  const similarlyNamed = { path: 'Notes/Archived/Related.md' };
+  app.vault.getMarkdownFiles = () => [file, nested, similarlyNamed];
+  text = 'MACHINE LEARNING';
+  await plugin.settingTab.setControlValue('excludedFolders', ' /Notes/Archive/ ');
+  await plugin.previewBatch(app.vault.getMarkdownFiles(), 'Vault');
+  const excludedPreview = flatten(lastModal.contentEl);
+  assert.ok(excludedPreview.includes(file.path));
+  assert.ok(excludedPreview.includes(similarlyNamed.path));
+  assert.ok(!excludedPreview.includes(nested.path));
+
+  await plugin.settingTab.setControlValue('includeSubfolders', false);
+  const previewBatch = plugin.previewBatch.bind(plugin);
+  let previewing;
+  plugin.previewBatch = (...args) => { previewing = previewBatch(...args); return previewing; };
+  plugin.commands.find(({ id }) => id === 'tag-current-folder').checkCallback(false);
+  await previewing;
+  assert.ok(flatten(lastModal.contentEl).includes(file.path));
+  assert.ok(!flatten(lastModal.contentEl).includes(similarlyNamed.path));
+
+  await plugin.settingTab.setControlValue('excludedFolders', 'Notes');
+  await plugin.settingTab.setControlValue('previewCurrentNote', true);
+  await plugin.tagCurrent(file);
+  assert.ok(flatten(lastModal.contentEl).includes(file.path));
+  assert.equal(writes, 1, 'Current-note preview must not write');
+
+  await plugin.settingTab.setControlValue('suggestionLimit', 1);
+  await plugin.settingTab.setControlValue('minimumOccurrences', 2);
+  const reloaded = new AutoTagger(app);
+  reloaded.stored = plugin.saved;
+  await reloaded.onload();
+  assert.equal(reloaded.settings.previewCurrentNote, true);
+  assert.equal(reloaded.settings.includeSubfolders, false);
+  assert.equal(reloaded.settings.excludedFolders, 'Notes');
+  assert.equal(reloaded.settings.suggestionLimit, 1);
+  assert.equal(reloaded.settings.minimumOccurrences, 2);
+  await reloaded.settingTab.setControlValue('minimumOccurrences', 0);
+  assert.equal(reloaded.settings.minimumOccurrences, 2);
+  text = 'orchid orchid orchid daffodil daffodil forest';
+  await reloaded.suggestCurrent(file);
+  const suggested = flatten(lastModal.contentEl).join('|');
+  assert.match(suggested, /#orchid/);
+  assert.doesNotMatch(suggested, /#daffodil|#forest/);
+  assert.deepEqual(core.suggestKeywords(text, null, 10, 2).map(({ tag }) => tag), ['orchid', 'daffodil']);
 
   console.log('Smoke checks passed.');
 }

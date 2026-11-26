@@ -19,7 +19,71 @@ declare const module: { exports: unknown };
 
 type TagRule = { pattern: string; mode: 'keyword' | 'regex'; ignoreCase: boolean; tags: string };
 type TagPlacement = 'frontmatter' | 'inline';
-type PluginSettings = { rules: TagRule[]; tagPlacement: TagPlacement };
+const BEHAVIOR_DEFAULTS = {
+  previewCurrentNote: false,
+  includeSubfolders: true,
+  excludedFolders: '',
+  suggestionLimit: 10,
+  minimumOccurrences: 1,
+};
+
+type BehaviorSettings = typeof BEHAVIOR_DEFAULTS;
+type PluginSettings = BehaviorSettings & { rules: TagRule[]; tagPlacement: TagPlacement };
+type BehaviorOption = {
+  name: string;
+  desc: string;
+  control:
+    | { type: 'toggle'; key: 'previewCurrentNote' | 'includeSubfolders'; defaultValue: boolean }
+    | { type: 'textarea'; key: 'excludedFolders'; defaultValue: string; placeholder: string }
+    | { type: 'slider'; key: 'suggestionLimit' | 'minimumOccurrences'; defaultValue: number; min: number; max: number; step: number };
+};
+
+const BEHAVIOR_OPTIONS: BehaviorOption[] = [
+  {
+    name: 'Preview current note before tagging',
+    desc: 'Review the proposed tags before Tag current note writes them. Batch commands always show a preview.',
+    control: { type: 'toggle', key: 'previewCurrentNote', defaultValue: BEHAVIOR_DEFAULTS.previewCurrentNote },
+  },
+  {
+    name: 'Include subfolders',
+    desc: 'Scan nested folders when running Tag current folder. Turn off to scan only the active note’s folder.',
+    control: { type: 'toggle', key: 'includeSubfolders', defaultValue: BEHAVIOR_DEFAULTS.includeSubfolders },
+  },
+  {
+    name: 'Exclude folders from batch tagging',
+    desc: 'Enter one vault-relative folder path per line, such as Templates or Work/Archive. The folder and its descendants are skipped by both batch commands.',
+    control: { type: 'textarea', key: 'excludedFolders', defaultValue: BEHAVIOR_DEFAULTS.excludedFolders, placeholder: 'Templates' },
+  },
+  {
+    name: 'Maximum suggestions',
+    desc: 'Limit how many keywords Suggest tags for current note shows.',
+    control: { type: 'slider', key: 'suggestionLimit', defaultValue: BEHAVIOR_DEFAULTS.suggestionLimit, min: 1, max: 50, step: 1 },
+  },
+  {
+    name: 'Minimum keyword occurrences',
+    desc: 'Require each suggested keyword to appear this many times in the note body.',
+    control: { type: 'slider', key: 'minimumOccurrences', defaultValue: BEHAVIOR_DEFAULTS.minimumOccurrences, min: 1, max: 10, step: 1 },
+  },
+];
+
+function updateBehavior(settings: BehaviorSettings, key: string, value: unknown): boolean {
+  const control = BEHAVIOR_OPTIONS.find((option) => option.control.key === key)?.control;
+  if (!control) return false;
+  switch (control.type) {
+    case 'toggle':
+      if (typeof value !== 'boolean') return false;
+      settings[control.key] = value;
+      return true;
+    case 'textarea':
+      if (typeof value !== 'string') return false;
+      settings[control.key] = value;
+      return true;
+    case 'slider':
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < control.min || value > control.max) return false;
+      settings[control.key] = value;
+      return true;
+  }
+}
 type CompiledRule = { regex: RegExp; tags: string[] };
 type RuleCompilation = { compiled: CompiledRule[]; errors: string[] };
 type FrontmatterParts = { yaml: string | null; body: string };
@@ -204,7 +268,8 @@ function proposedTags(content: string, cache: CachedMetadata | null, compiled: C
 function suggestKeywords(
   content: string,
   cache: CachedMetadata | null,
-  limit = 10,
+  limit = BEHAVIOR_DEFAULTS.suggestionLimit,
+  minimumOccurrences = BEHAVIOR_DEFAULTS.minimumOccurrences,
 ): TagSuggestion[] {
   const existing = collectExistingTags(content, cache);
   const fences = String.fromCharCode(96).repeat(3);
@@ -219,6 +284,7 @@ function suggestKeywords(
     counts.set(word, (counts.get(word) || 0) + 1);
   }
   return Array.from(counts, ([tag, count]) => ({ tag, count }))
+    .filter(({ count }) => count >= minimumOccurrences)
     .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
     .slice(0, limit);
 }
@@ -337,6 +403,8 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
   }
 
   getControlValue(key: string): unknown {
+    const behavior = BEHAVIOR_OPTIONS.find((option) => option.control.key === key);
+    if (behavior) return this.plugin.settings[behavior.control.key];
     if (key === 'tagPlacement') return this.plugin.settings.tagPlacement;
     const setting = getRuleSetting(this.plugin.settings, key);
     if (!setting) return undefined;
@@ -344,6 +412,10 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
   }
 
   async setControlValue(key: string, value: unknown): Promise<void> {
+    if (updateBehavior(this.plugin.settings, key, value)) {
+      await this.plugin.saveSettings();
+      return;
+    }
     if (key === 'tagPlacement') {
       if (value === 'frontmatter' || value === 'inline') {
         this.plugin.settings.tagPlacement = value;
@@ -376,8 +448,8 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
     const rules = this.plugin.settings.rules;
     return [
       {
-        name: 'Rule behavior',
-        desc: 'Rules scan note bodies. Keywords match whole words or phrases. Regular expressions use JavaScript syntax without slash delimiters.',
+        name: 'How tagging works',
+        desc: 'Run tagging commands from the command palette. Rules look for words, phrases, or patterns in the note body. Keyword suggestions are a separate command based on word frequency.',
       },
       {
         name: TAG_PLACEMENT_NAME,
@@ -389,20 +461,22 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
           options: TAG_PLACEMENT_OPTIONS,
         },
       },
+      ...BEHAVIOR_OPTIONS,
       {
         type: 'list',
         heading: 'Rules',
         emptyState: 'No rules yet. Add a rule to get started.',
         items: rules.map((rule, index) => ({
           type: 'page' as const,
-          name: 'Rule ' + (index + 1),
-          desc: rule.pattern
-            ? 'Pattern: ' + rule.pattern + '; tags: ' + rule.tags
-            : 'Set the pattern and tags for this rule.',
+          name: rule.pattern.trim() || 'Rule ' + (index + 1),
+          desc: rule.tags.trim()
+            ? 'Adds ' + rule.tags + ' when the ' + (rule.mode === 'regex' ? 'regular expression' : 'keyword or phrase') + ' matches.'
+            : 'Set a pattern and the tags this rule should add.',
           aliases: [rule.pattern, ...parseTagInput(rule.tags).tags],
           items: [
             {
               name: 'Pattern',
+              desc: 'Enter a whole word or phrase, or a JavaScript regular expression without slash delimiters.',
               control: {
                 type: 'text',
                 key: 'rules.' + index + '.pattern',
@@ -430,7 +504,8 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
               },
             },
             {
-              name: 'Tags',
+              name: 'Tags to add',
+              desc: 'Separate tags with commas or spaces. Use slashes for nested tags such as work/meeting.',
               control: {
                 type: 'text',
                 key: 'rules.' + index + '.tags',
@@ -498,6 +573,25 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
         .setValue(this.plugin.settings.tagPlacement)
         .onChange((value) => this.setControlValue('tagPlacement', value)));
 
+    for (const { name, desc, control } of BEHAVIOR_OPTIONS) {
+      const row = new Setting(container).setName(name).setDesc(desc);
+      const save = (value: unknown) => this.setControlValue(control.key, value);
+      const settings = this.plugin.settings;
+      switch (control.type) {
+        case 'toggle':
+          row.addToggle((toggle) => toggle.setValue(settings[control.key]).onChange(save));
+          break;
+        case 'textarea':
+          row.addTextArea((field) => field.setPlaceholder(control.placeholder)
+            .setValue(settings[control.key]).onChange(save));
+          break;
+        case 'slider':
+          row.addSlider((slider) => slider.setLimits(control.min, control.max, control.step)
+            .setValue(settings[control.key]).setDynamicTooltip().onChange(save));
+          break;
+      }
+    }
+
     this.plugin.settings.rules.forEach((rule, index) => {
       const row = container.createDiv({ cls: 'auto-tagger-rule' });
       new Setting(row)
@@ -524,7 +618,7 @@ class AutoTaggerSettingsTab extends PluginSettingTab {
       new Setting(row).setName('Case-insensitive')
         .addToggle((toggle) => toggle.setValue(rule.ignoreCase)
           .onChange(async (value) => { rule.ignoreCase = value; await this.plugin.saveSettings(); }));
-      new Setting(row).setName('Tags')
+      new Setting(row).setName('Tags to add')
         .addText((text) => text.setPlaceholder('ai, ml').setValue(rule.tags)
           .onChange(async (value) => { rule.tags = value; await this.plugin.saveSettings(); }));
     });
@@ -551,9 +645,15 @@ class RuleBasedAutoTagger extends Plugin {
       : STARTER_RULES;
     const storedPlacement = isRecord(stored) ? stored.tagPlacement : undefined;
     this.settings = {
-      rules: source,
+      ...BEHAVIOR_DEFAULTS,
+      rules: source.map((rule) => ({ ...rule })),
       tagPlacement: storedPlacement === 'inline' ? 'inline' : 'frontmatter',
     };
+    if (isRecord(stored)) {
+      for (const { control } of BEHAVIOR_OPTIONS) {
+        updateBehavior(this.settings, control.key, stored[control.key]);
+      }
+    }
     if (!rawRules || source.length !== rawRules.length || storedPlacement !== this.settings.tagPlacement) {
       await this.saveSettings();
     }
@@ -582,7 +682,10 @@ class RuleBasedAutoTagger extends Plugin {
         if (!checking) {
           const path = file.parent.path;
           const prefix = path === '/' ? '' : path + '/';
-          const files = this.app.vault.getMarkdownFiles().filter((item) => item.path.startsWith(prefix));
+          const files = this.app.vault.getMarkdownFiles().filter((item) =>
+            item.path.startsWith(prefix) &&
+            (this.settings.includeSubfolders || !item.path.slice(prefix.length).includes('/')),
+          );
           void this.previewBatch(files, path === '/' ? 'Vault root' : path);
         }
         return true;
@@ -602,11 +705,12 @@ class RuleBasedAutoTagger extends Plugin {
 
   async saveSettings(): Promise<void> {
     const snapshot: PluginSettings = {
+      ...this.settings,
       rules: this.settings.rules.map((rule) => ({ ...rule })),
-      tagPlacement: this.settings.tagPlacement,
     };
-    this.saveQueue = this.saveQueue.then(() => this.saveData(snapshot));
-    return this.saveQueue;
+    const saving = this.saveQueue.then(() => this.saveData(snapshot));
+    this.saveQueue = saving.catch(() => undefined);
+    return saving;
   }
 
   rulesForRun(): CompiledRule[] {
@@ -624,6 +728,10 @@ class RuleBasedAutoTagger extends Plugin {
   }
 
   async tagCurrent(file: TFile): Promise<void> {
+    if (this.settings.previewCurrentNote) {
+      await this.previewBatch([file], file.path, false);
+      return;
+    }
     const compiled = this.rulesForRun();
     try {
       const tags = await this.getProposal(file, compiled);
@@ -635,11 +743,17 @@ class RuleBasedAutoTagger extends Plugin {
     }
   }
 
-  async previewBatch(files: TFile[], label: string): Promise<void> {
+  async previewBatch(files: TFile[], label: string, applyFolderExclusions = true): Promise<void> {
+    const excluded = applyFolderExclusions
+      ? this.settings.excludedFolders.split(/\r?\n/)
+        .map((path) => path.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''))
+        .filter(Boolean)
+      : [];
     const compiled = this.rulesForRun();
     const changes: PreviewChange[] = [];
     const skipped: string[] = [];
     for (const file of files) {
+      if (excluded.some((folder) => file.path.startsWith(folder + '/'))) continue;
       try {
         const tags = await this.getProposal(file, compiled);
         if (tags.length) changes.push({ file, tags });
@@ -734,7 +848,12 @@ class RuleBasedAutoTagger extends Plugin {
   async suggestCurrent(file: TFile): Promise<void> {
     try {
       const text = await this.app.vault.read(file);
-      const suggestions = suggestKeywords(text, this.app.metadataCache.getFileCache(file));
+      const suggestions = suggestKeywords(
+        text,
+        this.app.metadataCache.getFileCache(file),
+        this.settings.suggestionLimit,
+        this.settings.minimumOccurrences,
+      );
       if (!suggestions.length) {
         new Notice('No new keyword suggestions for ' + file.path);
         return;

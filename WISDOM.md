@@ -35,3 +35,9 @@ I assumed MIT licensing is appropriate because the user's other Obsidian plugin 
 1. **What are you least confident about right now? What would you do differently?** The repaired integration suite has not run, and the legacy Obsidian 1.5 settings renderer remains unverified. I would run the full npm sequence in the operator shell and verify the dropdown's rendering and persistence in an isolated 1.5 profile.
 2. **What's the biggest thing I'm missing about the situation right now? What don't I realize? What would you do differently?** Inline tags can be present in the file and absent from Obsidian's index. The operator saw this with an unclosed code fence. I would keep metadata-cache assertions alongside byte assertions in native testing.
 3. **What assumption did you make that, if wrong, would change your answer the most? What would you do differently?** I assumed the missing `addClass` explains the prior integration crash and the remaining fake APIs cover the tested paths. If the next run exposes another mismatch, I would compare it with the native results before deciding whether to fix the fake or the plugin.
+
+## 2026-11-26 settings iteration
+
+1. **Least confident:** Native rendering and persistence of the new controls. I’d verify both settings renderers in disposable Obsidian vaults.
+2. **Biggest gap:** Users still have to leave settings to find out why a rule matched. I’d put a rule test against the active note beside the editor.
+3. **Key assumption:** Tagging should continue to start from the command palette. If you want tagging on save, I’d make that opt-in and give it a separate folder scope.

@@ -2,6 +2,58 @@
 
 // main.ts
 var import_obsidian = require("obsidian");
+var BEHAVIOR_DEFAULTS = {
+  previewCurrentNote: false,
+  includeSubfolders: true,
+  excludedFolders: "",
+  suggestionLimit: 10,
+  minimumOccurrences: 1
+};
+var BEHAVIOR_OPTIONS = [
+  {
+    name: "Preview current note before tagging",
+    desc: "Review the proposed tags before Tag current note writes them. Batch commands always show a preview.",
+    control: { type: "toggle", key: "previewCurrentNote", defaultValue: BEHAVIOR_DEFAULTS.previewCurrentNote }
+  },
+  {
+    name: "Include subfolders",
+    desc: "Scan nested folders when running Tag current folder. Turn off to scan only the active note\u2019s folder.",
+    control: { type: "toggle", key: "includeSubfolders", defaultValue: BEHAVIOR_DEFAULTS.includeSubfolders }
+  },
+  {
+    name: "Exclude folders from batch tagging",
+    desc: "Enter one vault-relative folder path per line, such as Templates or Work/Archive. The folder and its descendants are skipped by both batch commands.",
+    control: { type: "textarea", key: "excludedFolders", defaultValue: BEHAVIOR_DEFAULTS.excludedFolders, placeholder: "Templates" }
+  },
+  {
+    name: "Maximum suggestions",
+    desc: "Limit how many keywords Suggest tags for current note shows.",
+    control: { type: "slider", key: "suggestionLimit", defaultValue: BEHAVIOR_DEFAULTS.suggestionLimit, min: 1, max: 50, step: 1 }
+  },
+  {
+    name: "Minimum keyword occurrences",
+    desc: "Require each suggested keyword to appear this many times in the note body.",
+    control: { type: "slider", key: "minimumOccurrences", defaultValue: BEHAVIOR_DEFAULTS.minimumOccurrences, min: 1, max: 10, step: 1 }
+  }
+];
+function updateBehavior(settings, key, value) {
+  const control = BEHAVIOR_OPTIONS.find((option) => option.control.key === key)?.control;
+  if (!control) return false;
+  switch (control.type) {
+    case "toggle":
+      if (typeof value !== "boolean") return false;
+      settings[control.key] = value;
+      return true;
+    case "textarea":
+      if (typeof value !== "string") return false;
+      settings[control.key] = value;
+      return true;
+    case "slider":
+      if (typeof value !== "number" || !Number.isInteger(value) || value < control.min || value > control.max) return false;
+      settings[control.key] = value;
+      return true;
+  }
+}
 var TAG_PLACEMENT_NAME = "Where to put new tags";
 var TAG_PLACEMENT_DESCRIPTION = "Existing frontmatter and inline tags both count as duplicates in either mode.";
 var TAG_PLACEMENT_OPTIONS = {
@@ -144,7 +196,7 @@ function proposedTags(content, cache, compiled) {
   const existing = collectExistingTags(content, cache);
   return matchRules(content, compiled).filter((tag) => !existing.has(tagKey(tag)));
 }
-function suggestKeywords(content, cache, limit = 10) {
+function suggestKeywords(content, cache, limit = BEHAVIOR_DEFAULTS.suggestionLimit, minimumOccurrences = BEHAVIOR_DEFAULTS.minimumOccurrences) {
   const existing = collectExistingTags(content, cache);
   const fences = String.fromCharCode(96).repeat(3);
   const body = splitFrontmatter(content).body.replace(new RegExp(fences + "[\\s\\S]*?" + fences, "g"), " ").replace(/(?:^|[^\p{L}\p{N}_/#])#[\p{L}\p{N}_/-]+/gu, " ");
@@ -155,7 +207,7 @@ function suggestKeywords(content, cache, limit = 10) {
     if (word.length < 3 || STOP_WORDS.has(word) || !VALID_TAG.test(word) || existing.has(word)) continue;
     counts.set(word, (counts.get(word) || 0) + 1);
   }
-  return Array.from(counts, ([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)).slice(0, limit);
+  return Array.from(counts, ([tag, count]) => ({ tag, count })).filter(({ count }) => count >= minimumOccurrences).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)).slice(0, limit);
 }
 var BatchPreviewModal = class extends import_obsidian.Modal {
   constructor(plugin, changes, compiled, label, skipped) {
@@ -239,12 +291,18 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
     this.plugin = plugin;
   }
   getControlValue(key) {
+    const behavior = BEHAVIOR_OPTIONS.find((option) => option.control.key === key);
+    if (behavior) return this.plugin.settings[behavior.control.key];
     if (key === "tagPlacement") return this.plugin.settings.tagPlacement;
     const setting = getRuleSetting(this.plugin.settings, key);
     if (!setting) return void 0;
     return setting.rule[setting.property];
   }
   async setControlValue(key, value) {
+    if (updateBehavior(this.plugin.settings, key, value)) {
+      await this.plugin.saveSettings();
+      return;
+    }
     if (key === "tagPlacement") {
       if (value === "frontmatter" || value === "inline") {
         this.plugin.settings.tagPlacement = value;
@@ -276,8 +334,8 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
     const rules = this.plugin.settings.rules;
     return [
       {
-        name: "Rule behavior",
-        desc: "Rules scan note bodies. Keywords match whole words or phrases. Regular expressions use JavaScript syntax without slash delimiters."
+        name: "How tagging works",
+        desc: "Run tagging commands from the command palette. Rules look for words, phrases, or patterns in the note body. Keyword suggestions are a separate command based on word frequency."
       },
       {
         name: TAG_PLACEMENT_NAME,
@@ -289,18 +347,20 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
           options: TAG_PLACEMENT_OPTIONS
         }
       },
+      ...BEHAVIOR_OPTIONS,
       {
         type: "list",
         heading: "Rules",
         emptyState: "No rules yet. Add a rule to get started.",
         items: rules.map((rule, index) => ({
           type: "page",
-          name: "Rule " + (index + 1),
-          desc: rule.pattern ? "Pattern: " + rule.pattern + "; tags: " + rule.tags : "Set the pattern and tags for this rule.",
+          name: rule.pattern.trim() || "Rule " + (index + 1),
+          desc: rule.tags.trim() ? "Adds " + rule.tags + " when the " + (rule.mode === "regex" ? "regular expression" : "keyword or phrase") + " matches." : "Set a pattern and the tags this rule should add.",
           aliases: [rule.pattern, ...parseTagInput(rule.tags).tags],
           items: [
             {
               name: "Pattern",
+              desc: "Enter a whole word or phrase, or a JavaScript regular expression without slash delimiters.",
               control: {
                 type: "text",
                 key: "rules." + index + ".pattern",
@@ -328,7 +388,8 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
               }
             },
             {
-              name: "Tags",
+              name: "Tags to add",
+              desc: "Separate tags with commas or spaces. Use slashes for nested tags such as work/meeting.",
               control: {
                 type: "text",
                 key: "rules." + index + ".tags",
@@ -385,6 +446,22 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
       text: "Separate tags with commas or spaces. Tags may use letters, numbers, underscores, hyphens and nested slashes. Invalid rules are skipped."
     });
     new import_obsidian.Setting(container).setName(TAG_PLACEMENT_NAME).setDesc(TAG_PLACEMENT_DESCRIPTION).addDropdown((dropdown) => dropdown.addOptions(TAG_PLACEMENT_OPTIONS).setValue(this.plugin.settings.tagPlacement).onChange((value) => this.setControlValue("tagPlacement", value)));
+    for (const { name, desc, control } of BEHAVIOR_OPTIONS) {
+      const row = new import_obsidian.Setting(container).setName(name).setDesc(desc);
+      const save = (value) => this.setControlValue(control.key, value);
+      const settings = this.plugin.settings;
+      switch (control.type) {
+        case "toggle":
+          row.addToggle((toggle) => toggle.setValue(settings[control.key]).onChange(save));
+          break;
+        case "textarea":
+          row.addTextArea((field) => field.setPlaceholder(control.placeholder).setValue(settings[control.key]).onChange(save));
+          break;
+        case "slider":
+          row.addSlider((slider) => slider.setLimits(control.min, control.max, control.step).setValue(settings[control.key]).setDynamicTooltip().onChange(save));
+          break;
+      }
+    }
     this.plugin.settings.rules.forEach((rule, index) => {
       const row = container.createDiv({ cls: "auto-tagger-rule" });
       new import_obsidian.Setting(row).setName("Rule " + (index + 1)).addButton((button) => button.setButtonText("Remove").onClick(async () => {
@@ -406,7 +483,7 @@ var AutoTaggerSettingsTab = class extends import_obsidian.PluginSettingTab {
         rule.ignoreCase = value;
         await this.plugin.saveSettings();
       }));
-      new import_obsidian.Setting(row).setName("Tags").addText((text) => text.setPlaceholder("ai, ml").setValue(rule.tags).onChange(async (value) => {
+      new import_obsidian.Setting(row).setName("Tags to add").addText((text) => text.setPlaceholder("ai, ml").setValue(rule.tags).onChange(async (value) => {
         rule.tags = value;
         await this.plugin.saveSettings();
       }));
@@ -429,9 +506,15 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
     const source = rawRules ? rawRules.map(normalizeRule).filter((rule) => rule !== null) : STARTER_RULES;
     const storedPlacement = isRecord(stored) ? stored.tagPlacement : void 0;
     this.settings = {
-      rules: source,
+      ...BEHAVIOR_DEFAULTS,
+      rules: source.map((rule) => ({ ...rule })),
       tagPlacement: storedPlacement === "inline" ? "inline" : "frontmatter"
     };
+    if (isRecord(stored)) {
+      for (const { control } of BEHAVIOR_OPTIONS) {
+        updateBehavior(this.settings, control.key, stored[control.key]);
+      }
+    }
     if (!rawRules || source.length !== rawRules.length || storedPlacement !== this.settings.tagPlacement) {
       await this.saveSettings();
     }
@@ -462,7 +545,9 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
         if (!checking) {
           const path = file.parent.path;
           const prefix = path === "/" ? "" : path + "/";
-          const files = this.app.vault.getMarkdownFiles().filter((item) => item.path.startsWith(prefix));
+          const files = this.app.vault.getMarkdownFiles().filter(
+            (item) => item.path.startsWith(prefix) && (this.settings.includeSubfolders || !item.path.slice(prefix.length).includes("/"))
+          );
           void this.previewBatch(files, path === "/" ? "Vault root" : path);
         }
         return true;
@@ -481,11 +566,12 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
   }
   async saveSettings() {
     const snapshot = {
-      rules: this.settings.rules.map((rule) => ({ ...rule })),
-      tagPlacement: this.settings.tagPlacement
+      ...this.settings,
+      rules: this.settings.rules.map((rule) => ({ ...rule }))
     };
-    this.saveQueue = this.saveQueue.then(() => this.saveData(snapshot));
-    return this.saveQueue;
+    const saving = this.saveQueue.then(() => this.saveData(snapshot));
+    this.saveQueue = saving.catch(() => void 0);
+    return saving;
   }
   rulesForRun() {
     const result = compileRules(this.settings.rules);
@@ -500,6 +586,10 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
     return proposedTags(text, this.app.metadataCache.getFileCache(file), compiled);
   }
   async tagCurrent(file) {
+    if (this.settings.previewCurrentNote) {
+      await this.previewBatch([file], file.path, false);
+      return;
+    }
     const compiled = this.rulesForRun();
     try {
       const tags = await this.getProposal(file, compiled);
@@ -510,11 +600,13 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
       console.error(error);
     }
   }
-  async previewBatch(files, label) {
+  async previewBatch(files, label, applyFolderExclusions = true) {
+    const excluded = applyFolderExclusions ? this.settings.excludedFolders.split(/\r?\n/).map((path) => path.trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "")).filter(Boolean) : [];
     const compiled = this.rulesForRun();
     const changes = [];
     const skipped = [];
     for (const file of files) {
+      if (excluded.some((folder) => file.path.startsWith(folder + "/"))) continue;
       try {
         const tags = await this.getProposal(file, compiled);
         if (tags.length) changes.push({ file, tags });
@@ -593,7 +685,12 @@ var RuleBasedAutoTagger = class extends import_obsidian.Plugin {
   async suggestCurrent(file) {
     try {
       const text = await this.app.vault.read(file);
-      const suggestions = suggestKeywords(text, this.app.metadataCache.getFileCache(file));
+      const suggestions = suggestKeywords(
+        text,
+        this.app.metadataCache.getFileCache(file),
+        this.settings.suggestionLimit,
+        this.settings.minimumOccurrences
+      );
       if (!suggestions.length) {
         new import_obsidian.Notice("No new keyword suggestions for " + file.path);
         return;
