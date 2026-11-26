@@ -8,7 +8,7 @@
 - `previewBatch` excludes configured vault-relative folders and descendants before reading notes. Exclusions use case-sensitive path prefixes with a slash boundary. Single-note tagging remains available in those folders, including through the optional preview. A folder command can restrict its scan to direct children.
 - `suggestKeywords` filters by the minimum occurrence count before ranking and limiting. Both defaults preserve 1.1.0 results.
 - Modern rule entries use their pattern as the name and explain what tags they add. Settings explain the distinction between rule commands and keyword suggestions.
-- Typecheck, build, mocked smoke checks, and file-backed integration pass. Native rendering of the new controls remains unverified. The settings iteration has no new release tag.
+- Typecheck, build, mocked smoke checks, and file-backed integration pass. Native rendering of the new controls remains unverified. The settings iteration is published as [1.2.0](https://github.com/remriel/obsidian-rule-based-auto-tagger/releases/tag/1.2.0), tagged at `6b475b4`. [GitHub Actions](https://github.com/remriel/obsidian-rule-based-auto-tagger/actions/runs/45882030097) passed. The downloaded release files match all three published SHA-256 digests and the attestations for main.js and styles.css verify against refs/tags/1.2.0.
 
 ## Previous worklog, 2026-11-24
 
@@ -39,4 +39,4 @@
 
 ## RESUME HERE
 
-Start from the updated main source and built bundle. Check the new settings in a disposable vault on modern and legacy Obsidian versions, following the ordered checks in PROGRESS.md. Use versioned release metadata and the existing tag-triggered workflow when publishing. Keep the 1.5.0 support floor until there is a decision to change it.
+Start from the updated main source and built bundle. Check the new settings in a disposable vault on modern and legacy Obsidian versions, following the ordered checks in PROGRESS.md. Check that the community updater offers the already published 1.2.0. Keep the 1.5.0 support floor until there is a decision to change it.

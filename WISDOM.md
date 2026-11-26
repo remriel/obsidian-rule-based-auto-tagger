@@ -41,3 +41,9 @@ I assumed MIT licensing is appropriate because the user's other Obsidian plugin 
 1. **Least confident:** Native rendering and persistence of the new controls. I’d verify both settings renderers in disposable Obsidian vaults.
 2. **Biggest gap:** Users still have to leave settings to find out why a rule matched. I’d put a rule test against the active note beside the editor.
 3. **Key assumption:** Tagging should continue to start from the command palette. If you want tagging on save, I’d make that opt-in and give it a separate folder scope.
+
+## 2026-11-26 release
+
+1. **Least confident:** How the new controls render on Obsidian 1.5. I’d test them in a disposable vault.
+2. **Biggest gap:** Publishing on GitHub leaves the community review and update flow to verify. I’d check that Obsidian offers 1.2.0 through its updater.
+3. **Key assumption:** I chose a minor release because the settings add functionality while preserving existing defaults. If the project uses a different versioning convention, I’d apply it to the next release.
